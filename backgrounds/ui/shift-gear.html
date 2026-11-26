@@ -1,0 +1,594 @@
+<!doctype html><html><head><meta charset=utf8><meta name=viewport content="width=device-width,initial-scale=1,viewport-fit=cover"><style>:root{color-scheme:light;box-sizing:border-box;padding-top:env(safe-area-inset-top,0px);padding-bottom:env(safe-area-inset-bottom,0px)}html{scroll-padding-top:env(safe-area-inset-top,0px)}body{margin:0;padding:0;font:14px -apple-system,BlinkMacSystemFont,sans-serif;background:#fff;color:#000}img{max-width:100%}[hidden]:not([hidden=until-found i]){display:none!important}</style></head><body>
+<title>Shift Gear</title>
+<style>
+  :root {
+    --bg: #171a1f;
+    --text: #eef1f4;
+    --tab: rgba(22, 25, 30, 0.92);
+    --tab-border: rgba(255, 255, 255, 0.1);
+    --accent: #e3262f;
+    --logo-width: 196px;
+    color-scheme: dark;
+  }
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    font-family: system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: var(--text);
+    background:
+      radial-gradient(ellipse at 50% 35%, rgba(96, 104, 116, 0.38), transparent 62%),
+      repeating-linear-gradient(45deg, #1d2025 0 4px, #16191d 4px 8px),
+      var(--bg);
+    min-height: 100vh;
+    overflow-x: hidden;
+  }
+
+  /* Your page content goes here (left blank on purpose) */
+  main { min-height: 100vh; }
+
+  /* ---------- floating logo (drag it by its card or the bar on top) ---------- */
+  .logo-float {
+    position: fixed;
+    top: calc(22px + env(safe-area-inset-top, 0px));
+    left: calc(74px + env(safe-area-inset-left, 0px));
+    width: var(--logo-width);
+    z-index: 6;
+    padding: 14px 10px 8px;
+    border-radius: 22px;
+    background: rgba(20, 23, 28, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.08);
+    box-shadow: 0 18px 44px rgba(0, 0, 0, 0.6);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    cursor: move;
+    touch-action: none;
+    user-select: none;
+    -webkit-user-select: none;
+    transition: box-shadow 0.2s ease;
+  }
+  .logo-float.moving { box-shadow: 0 26px 60px rgba(0, 0, 0, 0.75); }
+  /* the name under the logo: the stretched i's fade like an engine revving */
+  .wordmark {
+    margin: 6px 0 2px;
+    text-align: center;
+    white-space: nowrap;
+    font: italic 800 17px/1.1 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    letter-spacing: -0.02em;
+    color: #eef1f4;
+    text-shadow: 0 1px 2px rgba(0, 0, 0, 0.6);
+  }
+  .wordmark .rev {
+    letter-spacing: 0.02em;
+    background: linear-gradient(90deg, #eef1f4 0%, rgba(238, 241, 244, 0.55) 45%, rgba(238, 241, 244, 0.25) 100%);
+    -webkit-background-clip: text; background-clip: text;
+    -webkit-text-fill-color: transparent; color: transparent;
+    text-shadow: none;
+  }
+  .wordmark .gear { margin-left: 0.3em; color: var(--accent); }
+  .logo-float .grip {
+    position: absolute; top: 6px; left: 50%;
+    width: 34px; height: 4px; margin-left: -17px;
+    border-radius: 4px; background: rgba(255, 255, 255, 0.22);
+  }
+  #shifter { display: block; width: 100%; aspect-ratio: 1 / 0.86; touch-action: none; }
+  #shifter.on-knob { cursor: grab; }
+  #shifter.dragging { cursor: grabbing; }
+  #shifter:focus-visible { outline: 2px solid var(--accent); outline-offset: 4px; border-radius: 14px; }
+
+  /* ---------- left edge menu: half-size tabs that slide out ---------- */
+  .dock {
+    position: fixed; left: 0; top: 50%; transform: translateY(-50%);
+    display: flex; flex-direction: column; align-items: flex-start; gap: 8px;
+    z-index: 5; padding: 8px 0 8px env(safe-area-inset-left, 0px);
+  }
+  .dk {
+    display: flex; align-items: center; gap: 10px;
+    text-decoration: none; color: var(--text);
+    background: var(--tab); border: 1px solid var(--tab-border); border-left: 0;
+    border-radius: 0 22px 22px 0;
+    height: 36px; padding: 0 7px 0 10px;
+    transform: translateX(-4px); opacity: 0.85;
+    box-shadow: 0 2px 10px rgba(0, 0, 0, 0.35);
+    transition: transform .22s ease, height .22s ease, opacity .22s, padding .22s, box-shadow .22s, border-color .22s;
+  }
+  .dk .ico { width: 24px; height: 24px; display: grid; place-items: center; flex: none; transition: width .22s, height .22s; }
+  .dk .knob {
+    width: 100%; height: 100%; border-radius: 50%;
+    display: grid; place-items: center;
+    background: radial-gradient(circle at 35% 30%, #6b6f75, #1b1c1f 55%, #000);
+    color: #eef1f4; font: 700 11px ui-monospace, Menlo, Consolas, monospace;
+    box-shadow: inset 0 -1px 2px rgba(255, 255, 255, 0.15);
+    transition: font-size .22s, color .22s;
+  }
+  .dk .lbl {
+    max-width: 0; overflow: hidden; white-space: nowrap;
+    font-weight: 700; font-size: 15px; opacity: 0;
+    transition: max-width .25s ease, opacity .2s;
+  }
+  /* slid out: when pointed at, focused, or selected */
+  .dk:hover, .dk:focus-visible, .dk.on {
+    transform: none; opacity: 1; height: 58px; padding: 0 18px 0 14px;
+    box-shadow: 0 8px 24px rgba(0, 0, 0, 0.5); outline: none;
+  }
+  .dk:hover .ico, .dk:focus-visible .ico, .dk.on .ico { width: 42px; height: 42px; }
+  .dk:hover .knob, .dk:focus-visible .knob, .dk.on .knob { font-size: 18px; }
+  .dk:hover .lbl, .dk:focus-visible .lbl, .dk.on .lbl { max-width: 200px; opacity: 1; }
+  .dk:focus-visible { box-shadow: 0 0 0 2px #fff, 0 8px 24px rgba(0, 0, 0, 0.5); }
+  /* the selected gear */
+  .dk.on { border: 2px solid var(--accent); border-left: 0; }
+  .dk.on .knob { color: #ff4a52; text-shadow: 0 0 8px rgba(255, 50, 60, 0.8); }
+
+  /* Neutral tab, bottom-left (works like a home button) */
+  .home { position: fixed; left: 0; bottom: calc(22px + env(safe-area-inset-bottom, 0px)); z-index: 5; padding-left: calc(10px + env(safe-area-inset-left, 0px)); }
+  .home .ico svg { width: 18px; height: 18px; color: #eef1f4; transition: width .22s, height .22s; }
+  .home .ico .knob { color: #eef1f4; }
+  .home:hover .ico svg, .home:focus-visible .ico svg { width: 24px; height: 24px; }
+  .home:active { transform: scale(0.97); }
+
+  .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
+  @media (prefers-reduced-motion: reduce) { .dk, .dk * { transition: none !important; } }
+</style>
+
+<div class="logo-float" id="logoFloat" title="Drag to move">
+  <span class="grip" aria-hidden="true"></span>
+  <canvas id="shifter" tabindex="0" role="application"
+    aria-label="Shift Gear logo. Drag the knob, or press 1 to 6 to choose a project and N for neutral."></canvas>
+  <div class="wordmark" aria-hidden="true"><span>Sh</span><span class="rev">iiiiiiiiii</span><span>ft</span><span class="gear">Gear</span></div>
+  <span class="sr-only">Shift Gear</span>
+</div>
+
+<nav class="dock" id="dock" aria-label="Projects"></nav>
+
+<a href="#" class="dk home" id="homeBtn" aria-label="Neutral: back to the start">
+  <span class="ico"><span class="knob"><svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round" aria-hidden="true"><path d="M3 11 12 4l9 7"/><path d="M5 10v10h14V10"/></svg></span></span>
+  <span class="lbl">Neutral</span>
+</a>
+
+<main></main>
+
+<p class="sr-only" id="announce" aria-live="polite"></p>
+
+<script>
+/* =============================================================
+   YOUR PROJECTS: one per gear. Add the links here later.
+   ============================================================= */
+const PROJECTS = [
+  { gear: 1, name: 'Project One',   url: '' },
+  { gear: 2, name: 'Project Two',   url: '' },
+  { gear: 3, name: 'Project Three', url: '' },
+  { gear: 4, name: 'Project Four',  url: '' },
+  { gear: 5, name: 'Project Five',  url: '' },
+  { gear: 6, name: 'Project Six',   url: '' }
+];
+const OPEN_ON_SELECT = true;     // open a project's link once its gear is selected (if it has a link)
+const OPEN_IN_NEW_TAB = false;   // true: projects open in a new tab
+const SOUND = true;              // soft clunk when a gear clicks in
+
+(() => {
+  'use strict';
+  const canvas = document.getElementById('shifter');
+  const ctx = canvas.getContext('2d');
+  const card = document.getElementById('logoFloat');
+  const dock = document.getElementById('dock');
+  const announce = document.getElementById('announce');
+  const TAU = Math.PI * 2;
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+
+  /* ---------- Gate geometry (columns at x = -1, 0, 1; y from -1 top to 1 bottom) ---------- */
+  const COLS = [-1, 0, 1];
+  const gearPos = g => ({ x: COLS[Math.floor((g - 1) / 2)], y: g % 2 === 1 ? -1 : 1 });
+  const onCol = (p, c) => Math.abs(p.x - c) < 1e-3;
+  const gearAt = p => {
+    if (Math.abs(p.y) < 0.97) return 0;
+    const ci = COLS.findIndex(c => onCol(p, c));
+    return ci < 0 ? 0 : ci * 2 + (p.y < 0 ? 1 : 2);
+  };
+
+  let W = 0, H = 0, dpr = 1, L = null, plate = null;
+  const cur = { x: 0, y: 0 };
+  let goal = { x: 0, y: 0 };
+  let dragging = false, engaged = 0, wobble = 0;
+
+  /* ---------- Layout and the brushed-metal plate ---------- */
+  function layout() {
+    const r = canvas.getBoundingClientRect();
+    dpr = Math.min(window.devicePixelRatio || 1, 2) * 1.5;      // extra sharp: it's a small logo
+    W = r.width; H = r.height;
+    canvas.width = Math.round(W * dpr); canvas.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const pw = W * 0.86, ph = pw * 0.86;
+    const py = (H - ph) / 2;
+    L = {
+      pw, ph, px: (W - pw) / 2, py,
+      cx: W / 2, cy: py + ph / 2,
+      ux: pw * 0.29, uy: ph * 0.22,
+      slot: pw * 0.034, lift: pw * 0.02, knobR: pw * 0.075,
+      font: Math.round(pw * 0.12), numOff: pw * 0.15
+    };
+    plate = renderPlate();
+  }
+  const toScreen = p => ({ x: L.cx + p.x * L.ux, y: L.cy + p.y * L.uy });
+
+  function rr(x, X, Y, w, h, r) {
+    x.beginPath();
+    x.moveTo(X + r, Y); x.lineTo(X + w - r, Y); x.quadraticCurveTo(X + w, Y, X + w, Y + r);
+    x.lineTo(X + w, Y + h - r); x.quadraticCurveTo(X + w, Y + h, X + w - r, Y + h);
+    x.lineTo(X + r, Y + h); x.quadraticCurveTo(X, Y + h, X, Y + h - r);
+    x.lineTo(X, Y + r); x.quadraticCurveTo(X, Y, X + r, Y);
+    x.closePath();
+  }
+  function gatePath(x) {
+    x.beginPath();
+    const a = toScreen({ x: -1, y: 0 }), b = toScreen({ x: 1, y: 0 });
+    x.moveTo(a.x, a.y); x.lineTo(b.x, b.y);
+    for (const c of COLS) {
+      const t = toScreen({ x: c, y: -1 }), u = toScreen({ x: c, y: 1 });
+      x.moveTo(t.x, t.y); x.lineTo(u.x, u.y);
+    }
+  }
+  const numberY = g => toScreen(gearPos(g)).y + (g % 2 ? -1 : 1) * (L.slot + L.numOff);
+
+  function renderPlate() {
+    const c = document.createElement('canvas');
+    c.width = canvas.width; c.height = canvas.height;
+    const x = c.getContext('2d');
+    x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    const { px, py, pw, ph } = L;
+    const rad = pw * 0.07;
+    x.save();
+    x.shadowColor = 'rgba(0,0,0,0.75)'; x.shadowBlur = 16; x.shadowOffsetY = 6;
+    rr(x, px - 4, py - 4, pw + 8, ph + 8, rad + 3);
+    x.fillStyle = '#16181c'; x.fill();
+    x.restore();
+    // brushed aluminium
+    rr(x, px, py, pw, ph, rad);
+    x.save(); x.clip();
+    const g = x.createLinearGradient(px, py, px + pw, py + ph);
+    g.addColorStop(0, '#e9ecef'); g.addColorStop(0.35, '#b9bec4'); g.addColorStop(0.55, '#d7dbdf'); g.addColorStop(0.8, '#9aa0a7'); g.addColorStop(1, '#c4c8cd');
+    x.fillStyle = g; x.fillRect(px, py, pw, ph);
+    for (let i = 0; i < ph * 4; i++) {
+      const yy = py + Math.random() * ph;
+      x.strokeStyle = Math.random() < 0.5 ? `rgba(255,255,255,${0.05 + Math.random() * 0.12})` : `rgba(60,66,72,${0.04 + Math.random() * 0.1})`;
+      x.lineWidth = 0.4;
+      const x0 = px + Math.random() * pw * 0.4;
+      x.beginPath(); x.moveTo(x0, yy); x.lineTo(x0 + pw * (0.3 + Math.random() * 0.6), yy); x.stroke();
+    }
+    const rg = x.createLinearGradient(px, py, px + pw * 0.6, py + ph);
+    rg.addColorStop(0, 'rgba(255,255,255,0)'); rg.addColorStop(0.5, 'rgba(255,255,255,0.22)'); rg.addColorStop(1, 'rgba(255,255,255,0)');
+    x.fillStyle = rg; x.fillRect(px, py, pw, ph);
+    x.restore();
+    rr(x, px, py, pw, ph, rad);
+    x.strokeStyle = 'rgba(255,255,255,0.75)'; x.lineWidth = 1.2; x.stroke();
+    // screws
+    for (const [sx, sy] of [[px + pw * 0.07, py + ph * 0.09], [px + pw * 0.93, py + ph * 0.09], [px + pw * 0.07, py + ph * 0.91], [px + pw * 0.93, py + ph * 0.91]]) {
+      const r = pw * 0.02;
+      const sg = x.createRadialGradient(sx - r * 0.4, sy - r * 0.4, r * 0.1, sx, sy, r);
+      sg.addColorStop(0, '#f4f6f8'); sg.addColorStop(1, '#6f757c');
+      x.fillStyle = sg; x.beginPath(); x.arc(sx, sy, r, 0, TAU); x.fill();
+      x.strokeStyle = '#3a3f45'; x.lineWidth = r * 0.35;
+      x.beginPath(); x.moveTo(sx - r * 0.6, sy - r * 0.2); x.lineTo(sx + r * 0.6, sy + r * 0.2); x.stroke();
+    }
+    // the gate slots
+    x.lineCap = 'round'; x.lineJoin = 'round';
+    gatePath(x); x.strokeStyle = 'rgba(255,255,255,0.9)'; x.lineWidth = L.slot * 2 + 2.5; x.stroke();
+    gatePath(x); x.strokeStyle = '#7d838a'; x.lineWidth = L.slot * 2 + 0.8; x.stroke();
+    gatePath(x); x.strokeStyle = '#050506'; x.lineWidth = L.slot * 2 - 1.5; x.stroke();
+    // engraved gear numbers
+    x.textAlign = 'center'; x.textBaseline = 'middle';
+    x.font = `700 ${L.font}px ui-monospace, Menlo, Consolas, monospace`;
+    for (let n = 1; n <= 6; n++) {
+      const p = toScreen(gearPos(n)), ty = numberY(n);
+      x.fillStyle = 'rgba(255,255,255,0.85)'; x.fillText(n, p.x + 0.6, ty + 0.6);
+      x.fillStyle = '#2a2e33'; x.fillText(n, p.x, ty);
+    }
+    return c;
+  }
+
+  /* ---------- Lever movement along the H pattern ---------- */
+  function nearestOnGate(q) {
+    let best = { x: clamp(q.x, -1, 1), y: 0 }, bd = Math.hypot(best.x - q.x, q.y);
+    for (const c of COLS) {
+      const p = { x: c, y: clamp(q.y, -1, 1) };
+      const d = Math.hypot(p.x - q.x, p.y - q.y);
+      if (d < bd - 0.02) { bd = d; best = p; }
+    }
+    return best;
+  }
+  // follow the slots: back to the neutral line before changing column
+  function travel(dist) {
+    let left = dist;
+    for (let guard = 0; guard < 4 && left > 1e-5; guard++) {
+      const sameCol = COLS.some(c => onCol(cur, c) && onCol(goal, c));
+      if (sameCol || (Math.abs(cur.y) < 1e-4 && Math.abs(goal.y) < 1e-4)) {
+        const dx = goal.x - cur.x, dy = goal.y - cur.y, d = Math.hypot(dx, dy);
+        if (d <= left) { cur.x = goal.x; cur.y = goal.y; return; }
+        cur.x += dx / d * left; cur.y += dy / d * left; return;
+      }
+      if (Math.abs(cur.y) > 1e-4) {
+        const d = Math.abs(cur.y);
+        if (d <= left) { left -= d; cur.y = 0; } else { cur.y -= Math.sign(cur.y) * left; return; }
+      } else {
+        const tx = COLS.reduce((a, c) => Math.abs(c - goal.x) < Math.abs(a - goal.x) ? c : a, COLS[0]);
+        const d = Math.abs(tx - cur.x);
+        if (d <= left) { left -= d; cur.x = tx; } else { cur.x += Math.sign(tx - cur.x) * left; return; }
+      }
+    }
+  }
+
+  /* ---------- Drawing the lever ---------- */
+  function knobPos(p) {
+    const s = toScreen(p);
+    return { x: s.x + (s.x - L.cx) * 0.25, y: s.y + (s.y - L.cy) * 0.2 - L.lift, base: s };
+  }
+  function draw(t) {
+    ctx.clearRect(0, 0, W, H);
+    ctx.drawImage(plate, 0, 0, W, H);
+    if (engaged) {
+      const p = toScreen(gearPos(engaged));
+      ctx.save();
+      ctx.textAlign = 'center'; ctx.textBaseline = 'middle';
+      ctx.font = `700 ${L.font}px ui-monospace, Menlo, Consolas, monospace`;
+      ctx.shadowColor = 'rgba(255,40,50,0.9)'; ctx.shadowBlur = 8;
+      ctx.fillStyle = '#e3262f'; ctx.fillText(engaged, p.x, numberY(engaged));
+      ctx.restore();
+    }
+    const k = knobPos(cur), base = k.base;
+    const kx = k.x + Math.sin(t * 40) * wobble * L.pw * 0.01, ky = k.y;
+    const hr = ctx.createLinearGradient(base.x - L.slot * 1.3, base.y - L.slot, base.x + L.slot * 1.3, base.y + L.slot);
+    hr.addColorStop(0, '#c9ced4'); hr.addColorStop(0.5, '#7f868e'); hr.addColorStop(1, '#4a5057');
+    ctx.fillStyle = hr;
+    ctx.beginPath(); ctx.ellipse(base.x, base.y, L.slot * 1.3, L.slot * 0.95, 0, 0, TAU); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.6)'; ctx.lineWidth = 0.8; ctx.stroke();
+    // soft shadows
+    ctx.save();
+    ctx.translate(base.x + L.pw * 0.06, base.y + L.ph * 0.035);
+    ctx.rotate(0.3); ctx.scale(1, 0.48);
+    const sh = ctx.createRadialGradient(0, 0, 0, 0, 0, L.knobR * 1.2);
+    sh.addColorStop(0, 'rgba(0,0,0,0.5)'); sh.addColorStop(0.6, 'rgba(0,0,0,0.25)'); sh.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = sh; ctx.beginPath(); ctx.arc(0, 0, L.knobR * 1.2, 0, TAU); ctx.fill();
+    ctx.restore();
+    ctx.save();
+    ctx.lineCap = 'round';
+    const lg = ctx.createLinearGradient(base.x, base.y, base.x + L.pw * 0.05, base.y + L.ph * 0.03);
+    lg.addColorStop(0, 'rgba(0,0,0,0.45)'); lg.addColorStop(1, 'rgba(0,0,0,0.12)');
+    ctx.strokeStyle = lg; ctx.lineWidth = L.pw * 0.028;
+    ctx.beginPath(); ctx.moveTo(base.x, base.y); ctx.lineTo(base.x + L.pw * 0.05, base.y + L.ph * 0.03); ctx.stroke();
+    ctx.restore();
+    // chrome shaft
+    const ang = Math.atan2(ky - base.y, kx - base.x), nx = -Math.sin(ang), ny = Math.cos(ang);
+    const w0 = L.pw * 0.026, w1 = L.pw * 0.018;
+    const cg = ctx.createLinearGradient(base.x - nx * w0, base.y - ny * w0, base.x + nx * w0, base.y + ny * w0);
+    cg.addColorStop(0, '#2d3136'); cg.addColorStop(0.25, '#f5f7f9'); cg.addColorStop(0.45, '#8f969e'); cg.addColorStop(0.7, '#dfe3e7'); cg.addColorStop(1, '#3a3f45');
+    ctx.fillStyle = cg;
+    ctx.beginPath();
+    ctx.moveTo(base.x + nx * w0, base.y + ny * w0); ctx.lineTo(kx + nx * w1, ky + ny * w1);
+    ctx.lineTo(kx - nx * w1, ky - ny * w1); ctx.lineTo(base.x - nx * w0, base.y - ny * w0);
+    ctx.closePath(); ctx.fill();
+    // chrome collar
+    const R = L.knobR, colY = ky + R * 0.78;
+    const colG = ctx.createLinearGradient(kx - R * 0.55, 0, kx + R * 0.55, 0);
+    colG.addColorStop(0, '#3b4046'); colG.addColorStop(0.3, '#f7f9fb'); colG.addColorStop(0.55, '#9aa1a8'); colG.addColorStop(1, '#2f3338');
+    ctx.fillStyle = colG;
+    ctx.beginPath(); ctx.ellipse(kx, colY, R * 0.5, R * 0.18, 0, 0, TAU); ctx.fill();
+    ctx.fillRect(kx - R * 0.5, colY - R * 0.2, R, R * 0.2);
+    ctx.beginPath(); ctx.ellipse(kx, colY - R * 0.2, R * 0.5, R * 0.18, 0, 0, TAU); ctx.fill();
+    // polished black knob
+    const kg = ctx.createRadialGradient(kx - R * 0.35, ky - R * 0.4, R * 0.05, kx, ky, R);
+    kg.addColorStop(0, '#d5d9de'); kg.addColorStop(0.3, '#8a9098'); kg.addColorStop(0.75, '#555b62'); kg.addColorStop(1, '#353a40');
+    ctx.fillStyle = kg; ctx.beginPath(); ctx.arc(kx, ky, R, 0, TAU); ctx.fill();
+    const rim = ctx.createRadialGradient(kx, ky + R * 0.2, R * 0.75, kx, ky, R * 1.01);
+    rim.addColorStop(0, 'rgba(255,255,255,0)'); rim.addColorStop(1, 'rgba(220,228,235,0.45)');
+    ctx.fillStyle = rim; ctx.beginPath(); ctx.arc(kx, ky, R, 0, TAU); ctx.fill();
+    ctx.strokeStyle = 'rgba(240,244,248,0.7)'; ctx.lineWidth = 0.9;
+    ctx.beginPath(); ctx.arc(kx, ky, R - 0.4, 0, TAU); ctx.stroke();
+    ctx.save();
+    ctx.translate(kx - R * 0.38, ky - R * 0.45); ctx.rotate(-0.6);
+    const hg = ctx.createRadialGradient(0, 0, 0, 0, 0, R * 0.32);
+    hg.addColorStop(0, 'rgba(255,255,255,0.95)'); hg.addColorStop(1, 'rgba(255,255,255,0)');
+    ctx.fillStyle = hg; ctx.beginPath(); ctx.ellipse(0, 0, R * 0.32, R * 0.16, 0, 0, TAU); ctx.fill();
+    ctx.restore();
+  }
+
+  /* ---------- Sound ---------- */
+  let audio = null;
+  function clunk(strong) {
+    if (!SOUND) return;
+    try {
+      audio = audio || new (window.AudioContext || window.webkitAudioContext)();
+      const t0 = audio.currentTime;
+      const o = audio.createOscillator(), g = audio.createGain();
+      o.type = 'sine'; o.frequency.setValueAtTime(strong ? 140 : 220, t0); o.frequency.exponentialRampToValueAtTime(60, t0 + 0.12);
+      g.gain.setValueAtTime(strong ? 0.3 : 0.1, t0); g.gain.exponentialRampToValueAtTime(0.001, t0 + 0.16);
+      o.connect(g).connect(audio.destination); o.start(t0); o.stop(t0 + 0.18);
+      const len = Math.floor(audio.sampleRate * 0.03), buf = audio.createBuffer(1, len, audio.sampleRate), d = buf.getChannelData(0);
+      for (let i = 0; i < len; i++) d[i] = (Math.random() * 2 - 1) * Math.pow(1 - i / len, 3);
+      const n = audio.createBufferSource(), ng = audio.createGain(), f = audio.createBiquadFilter();
+      f.type = 'bandpass'; f.frequency.value = strong ? 2200 : 3200; ng.gain.value = strong ? 0.22 : 0.08;
+      n.buffer = buf; n.connect(f).connect(ng).connect(audio.destination); n.start(t0);
+    } catch (e) {}
+  }
+
+  /* ---------- The left edge menu, kept in step with the lever ---------- */
+  const proj = g => PROJECTS.find(p => p.gear === g);
+  PROJECTS.forEach(p => {
+    const a = document.createElement('a');
+    a.className = 'dk';
+    a.href = p.url || '#';
+    a.dataset.gear = p.gear;
+    a.innerHTML = '<span class="ico"><span class="knob"></span></span><span class="lbl"></span>';
+    a.querySelector('.knob').textContent = p.gear;
+    a.querySelector('.lbl').textContent = p.name;
+    a.setAttribute('aria-label', `Gear ${p.gear}: ${p.name}`);
+    a.addEventListener('click', e => {
+      e.preventDefault();          // select first; the link opens once the lever is in that gear
+      shiftTo(p.gear);
+      if (audio && audio.state === 'suspended') audio.resume();
+    });
+    dock.appendChild(a);
+  });
+
+  let openTimer = null;
+  function openProject(g) {
+    const p = proj(g);
+    if (!p || !p.url) return;
+    if (OPEN_IN_NEW_TAB) window.open(p.url, '_blank', 'noopener');
+    else window.location.href = p.url;
+  }
+  function onGearChange() {
+    dock.querySelectorAll('.dk').forEach(a => {
+      const on = +a.dataset.gear === engaged;
+      a.classList.toggle('on', on);
+      if (on) a.setAttribute('aria-current', 'true'); else a.removeAttribute('aria-current');
+    });
+    const p = proj(engaged);
+    announce.textContent = p ? `Gear ${engaged}: ${p.name}` : 'Neutral';
+    clearTimeout(openTimer);
+    if (p && p.url && OPEN_ON_SELECT) openTimer = setTimeout(() => { if (engaged === p.gear && !dragging) openProject(p.gear); }, 700);
+    // lets the rest of your page react: document.addEventListener('gearchange', e => e.detail.gear ...)
+    document.dispatchEvent(new CustomEvent('gearchange', { detail: { gear: engaged, project: p || null } }));
+  }
+  function shiftTo(g) { goal = g ? gearPos(g) : { x: 0, y: 0 }; }
+
+  // Home: everything back to how it was when the page opened (lever in neutral, nothing selected)
+  function goHome() {
+    clearTimeout(openTimer);
+    dragging = false;
+    canvas.classList.remove('dragging');
+    goal = { x: 0, y: 0 };
+    if (location.hash) history.replaceState(null, '', location.pathname + location.search);
+    window.scrollTo({ top: 0, behavior: reduceMotion ? 'auto' : 'smooth' });
+    document.dispatchEvent(new CustomEvent('gohome'));
+  }
+  document.getElementById('homeBtn').addEventListener('click', e => {
+    e.preventDefault();
+    goHome();
+    e.currentTarget.blur();
+  });
+
+  /* ---------- Moving the lever: pointer and keyboard ---------- */
+  function pointerToGate(e) {
+    const r = canvas.getBoundingClientRect();
+    const mx = e.clientX - r.left, my = e.clientY - r.top;
+    const sx = (mx + L.cx * 0.25) / 1.25;
+    const sy = (my + L.lift + L.cy * 0.2) / 1.2;
+    return { x: (sx - L.cx) / L.ux, y: (sy - L.cy) / L.uy };
+  }
+  const onKnob = e => {
+    const k = knobPos(cur), r = canvas.getBoundingClientRect();
+    return Math.hypot(e.clientX - r.left - k.x, e.clientY - r.top - k.y) < L.knobR * 1.7;
+  };
+  canvas.addEventListener('pointerdown', e => {
+    if (!onKnob(e)) return;          // not on the knob: the card gets dragged instead
+    e.stopPropagation();
+    dragging = true;
+    canvas.classList.add('dragging');
+    canvas.setPointerCapture(e.pointerId);
+    goal = nearestOnGate(pointerToGate(e));
+    if (audio && audio.state === 'suspended') audio.resume();
+  });
+  canvas.addEventListener('pointermove', e => {
+    if (!dragging) { canvas.classList.toggle('on-knob', onKnob(e)); return; }
+    goal = nearestOnGate(pointerToGate(e));
+  });
+  const release = () => {
+    if (!dragging) return;
+    dragging = false;
+    canvas.classList.remove('dragging');
+    const col = COLS.find(c => onCol(cur, c));
+    if (col != null && Math.abs(cur.y) >= 0.55) goal = { x: col, y: Math.sign(cur.y) };
+    else goal = { x: 0, y: 0 };
+  };
+  canvas.addEventListener('pointerup', release);
+  canvas.addEventListener('pointercancel', release);
+
+  window.addEventListener('keydown', e => {
+    if (e.target.closest && e.target.closest('input, textarea, select, [contenteditable]')) return;
+    if (/^[1-6]$/.test(e.key)) { shiftTo(+e.key); }
+    else if (e.key === 'n' || e.key === 'N' || e.key === '0') { shiftTo(0); }
+    else if (document.activeElement === canvas && e.key.startsWith('Arrow')) {
+      e.preventDefault();
+      const col = COLS.find(c => onCol(cur, c));
+      if (e.key === 'ArrowUp' || e.key === 'ArrowDown') {
+        const dir = e.key === 'ArrowUp' ? -1 : 1;
+        const cx = col != null ? col : COLS.reduce((a, c) => Math.abs(c - cur.x) < Math.abs(a - cur.x) ? c : a, 0);
+        goal = { x: cx, y: Math.abs(cur.y) > 0.5 && Math.sign(cur.y) !== dir ? 0 : dir };
+      } else if (Math.abs(cur.y) < 0.5) {
+        const ci = COLS.findIndex(c => Math.abs(c - cur.x) < 0.5);
+        goal = { x: COLS[clamp(ci + (e.key === 'ArrowLeft' ? -1 : 1), 0, 2)], y: 0 };
+      }
+    }
+  });
+
+  /* ---------- Floating logo: drag the card anywhere, it remembers where ---------- */
+  const POS_KEY = 'gear-logo-pos';
+  function placeCard(x, y) {
+    const r = card.getBoundingClientRect();
+    const nx = clamp(x, 0, Math.max(0, window.innerWidth - r.width));
+    const ny = clamp(y, 0, Math.max(0, window.innerHeight - r.height));
+    card.style.left = nx + 'px'; card.style.top = ny + 'px';
+    return { x: nx, y: ny };
+  }
+  try {
+    const saved = JSON.parse(localStorage.getItem(POS_KEY) || 'null');
+    if (saved && typeof saved.x === 'number') placeCard(saved.x, saved.y);
+  } catch (e) {}
+  let move = null;
+  card.addEventListener('pointerdown', e => {
+    if (e.button !== 0) return;
+    const r = card.getBoundingClientRect();
+    move = { dx: e.clientX - r.left, dy: e.clientY - r.top, id: e.pointerId };
+    card.setPointerCapture(e.pointerId);
+    card.classList.add('moving');
+  });
+  card.addEventListener('pointermove', e => {
+    if (!move || e.pointerId !== move.id) return;
+    placeCard(e.clientX - move.dx, e.clientY - move.dy);
+  });
+  const endMove = () => {
+    if (!move) return;
+    move = null;
+    card.classList.remove('moving');
+    try { localStorage.setItem(POS_KEY, JSON.stringify({ x: parseFloat(card.style.left), y: parseFloat(card.style.top) })); } catch (e) {}
+  };
+  card.addEventListener('pointerup', endMove);
+  card.addEventListener('pointercancel', endMove);
+  card.addEventListener('dblclick', e => {        // double-click the card's edge to put it back
+    if (e.target === canvas) return;
+    card.style.left = ''; card.style.top = '';
+    try { localStorage.removeItem(POS_KEY); } catch (err) {}
+  });
+
+  /* ---------- Main loop ---------- */
+  let last = null;
+  function frame(now) {
+    const dt = last == null ? 0.016 : Math.min(0.05, (now - last) / 1000);
+    last = now;
+    travel((reduceMotion ? 50 : (dragging ? 9 : 5)) * dt);
+    if (dragging) {
+      const col = COLS.find(c => onCol(cur, c));
+      if (col != null && Math.abs(cur.y) > 0.86 && Math.abs(goal.y) > 0.8) cur.y = Math.sign(cur.y) * Math.min(1, Math.abs(cur.y) + dt * 2);
+    }
+    const g = gearAt(cur);
+    if (g !== engaged) {
+      if (g) { clunk(true); wobble = 1; } else if (engaged) clunk(false);
+      engaged = g;
+      onGearChange();
+    }
+    wobble *= Math.pow(0.002, dt);
+    draw(now / 1000);
+    requestAnimationFrame(frame);
+  }
+
+  let rt;
+  window.addEventListener('resize', () => {
+    clearTimeout(rt);
+    rt = setTimeout(() => { layout(); if (card.style.left) placeCard(parseFloat(card.style.left), parseFloat(card.style.top)); }, 120);
+  });
+  layout();
+  onGearChange();
+  requestAnimationFrame(frame);
+})();
+</script>
+
+</body></html>

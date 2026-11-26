@@ -1,0 +1,1376 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Live Weather Scene</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    font-family: Georgia, "Times New Roman", serif;
+    background: #7fb3e3;
+    overflow-x: hidden;
+    color: #1f2d36;
+    transition: color 1.5s ease;
+  }
+  body.dark { color: #eef3fa; background: #0b1222; }
+  #scene {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    pointer-events: none;
+  }
+  /* Your page content goes here, above the scene */
+  main {
+    position: relative;
+    z-index: 1;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    text-align: center;
+    padding: 14vh 16px 24px;
+  }
+  h1 {
+    font-size: clamp(2.4rem, 7vw, 5rem);
+    font-weight: normal;
+    letter-spacing: 0.04em;
+    text-shadow: 0 2px 16px rgba(255, 255, 255, 0.7);
+    transition: text-shadow 1.5s ease;
+  }
+  p {
+    margin-top: 12px;
+    font-size: clamp(1rem, 2.5vw, 1.3rem);
+    opacity: 0.9;
+    text-shadow: 0 1px 10px rgba(255, 255, 255, 0.7);
+    transition: text-shadow 1.5s ease;
+  }
+  body.dark h1, body.dark p { text-shadow: 0 2px 16px rgba(0, 0, 20, 0.9); }
+
+  /* ---------- Weather control ---------- */
+  #wx {
+    position: fixed;
+    top: 16px;
+    right: 16px;
+    z-index: 3;
+    display: flex;
+    flex-direction: column;
+    align-items: flex-end;
+    font: 14px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+    color: #1f2d36;
+    transition: color 1.5s ease;
+  }
+  body.dark #wx { color: #eef3fa; }
+  .glass {
+    background: rgba(255, 255, 255, 0.55);
+    border: 1px solid rgba(255, 255, 255, 0.75);
+    backdrop-filter: blur(8px);
+    -webkit-backdrop-filter: blur(8px);
+    transition: background 1.5s ease, border-color 1.5s ease;
+  }
+  body.dark .glass {
+    background: rgba(18, 26, 44, 0.6);
+    border-color: rgba(200, 210, 255, 0.25);
+  }
+  #wxPill {
+    display: flex;
+    align-items: center;
+    gap: 8px;
+    max-width: calc(100vw - 32px);
+    padding: 7px 14px 7px 10px;
+    border-radius: 999px;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+  #wxPill:focus-visible, #wx input:focus-visible, #wx button:focus-visible, #wx select:focus-visible {
+    outline: 2px solid #f5b800;
+    outline-offset: 2px;
+  }
+  #wxIcon { width: 26px; height: 26px; flex: none; }
+  #wxPlace { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 40vw; }
+  #wxTemp { font-weight: 600; }
+  #wxPanel {
+    margin-top: 8px;
+    width: min(320px, calc(100vw - 32px));
+    padding: 12px;
+    border-radius: 14px;
+  }
+  #wxPanel[hidden] { display: none; }
+  .row { display: flex; gap: 8px; }
+  #cityInput {
+    flex: 1;
+    min-width: 0;
+    padding: 8px 10px;
+    border-radius: 8px;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    background: rgba(255, 255, 255, 0.85);
+    color: #1f2d36;
+    font: inherit;
+  }
+  body.dark #cityInput { background: rgba(10, 16, 30, 0.7); color: #eef3fa; border-color: rgba(255, 255, 255, 0.2); }
+  .iconBtn {
+    width: 38px;
+    flex: none;
+    display: grid;
+    place-items: center;
+    border-radius: 8px;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    background: rgba(255, 255, 255, 0.85);
+    color: #1f2d36;
+    cursor: pointer;
+  }
+  body.dark .iconBtn { background: rgba(10, 16, 30, 0.7); color: #eef3fa; border-color: rgba(255, 255, 255, 0.2); }
+  .iconBtn svg { width: 18px; height: 18px; }
+  #results { list-style: none; margin-top: 6px; }
+  #results button {
+    width: 100%;
+    text-align: left;
+    padding: 7px 8px;
+    border: 0;
+    border-radius: 6px;
+    background: transparent;
+    color: inherit;
+    font: inherit;
+    cursor: pointer;
+  }
+  #results button:hover { background: rgba(127, 127, 127, 0.18); }
+  #results small { opacity: 0.7; }
+  #wxDetails { margin-top: 10px; font-size: 13px; opacity: 0.85; }
+  #wxStatus { margin-top: 4px; font-size: 12px; opacity: 0.75; min-height: 1em; }
+  .preview {
+    margin-top: 10px;
+    padding-top: 10px;
+    border-top: 1px solid rgba(127, 127, 127, 0.3);
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: 8px;
+    font-size: 13px;
+  }
+  .preview select {
+    flex: 1;
+    min-width: 0;
+    padding: 5px 6px;
+    border-radius: 6px;
+    border: 1px solid rgba(0, 0, 0, 0.15);
+    background: rgba(255, 255, 255, 0.85);
+    color: #1f2d36;
+    font: inherit;
+  }
+  body.dark .preview select { background: rgba(10, 16, 30, 0.7); color: #eef3fa; border-color: rgba(255, 255, 255, 0.2); }
+  .preview label { display: flex; align-items: center; gap: 4px; cursor: pointer; }
+</style>
+</head>
+<body>
+<canvas id="scene"></canvas>
+
+<div id="wx">
+  <button id="wxPill" class="glass" type="button" aria-expanded="false" aria-controls="wxPanel">
+    <span id="wxIcon" aria-hidden="true"></span>
+    <span id="wxPlace">Loading…</span>
+    <span id="wxTemp"></span>
+  </button>
+  <div id="wxPanel" class="glass" hidden>
+    <form id="searchForm" class="row" autocomplete="off">
+      <input id="cityInput" type="search" placeholder="Search a city" aria-label="Search a city">
+      <button id="locBtn" class="iconBtn" type="button" title="Use my location" aria-label="Use my location">
+        <svg viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2" stroke-linecap="round">
+          <circle cx="12" cy="12" r="3.5"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3"/><circle cx="12" cy="12" r="7.5"/>
+        </svg>
+      </button>
+    </form>
+    <ul id="results"></ul>
+    <div id="wxDetails"></div>
+    <div id="wxStatus" role="status"></div>
+    <div class="preview">
+      <span>Preview</span>
+      <select id="previewSel" aria-label="Preview a weather scene">
+        <option value="">Live weather</option>
+        <option value="clear">Clear</option>
+        <option value="partly">Partly cloudy</option>
+        <option value="cloudy">Overcast</option>
+        <option value="windy">Windy</option>
+        <option value="fog">Fog</option>
+        <option value="drizzle">Drizzle</option>
+        <option value="rain">Rain</option>
+        <option value="heavy">Heavy rain</option>
+        <option value="storm">Thunderstorm</option>
+        <option value="snow">Snow</option>
+      </select>
+      <label><input id="previewNight" type="checkbox"> Night</label>
+    </div>
+  </div>
+</div>
+
+<main>
+  <h1>Welcome</h1>
+  <p>Replace this with your own content.</p>
+</main>
+
+<script>
+(() => {
+  'use strict';
+  const canvas = document.getElementById('scene');
+  const ctx = canvas.getContext('2d');
+  const TAU = Math.PI * 2;
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+  const clamp = (v, a, b) => Math.max(a, Math.min(b, v));
+  const reduceMotion = window.matchMedia('(prefers-reduced-motion: reduce)').matches;
+  let W = 0, H = 0, dpr = 1, S = 1;
+
+  /* =========================================================
+     Weather codes (WMO, as used by Open-Meteo)
+     ========================================================= */
+  function describe(code) {
+    if (code === 0) return { label: 'Clear', kind: 'clear' };
+    if (code === 1) return { label: 'Mainly clear', kind: 'clear' };
+    if (code === 2) return { label: 'Partly cloudy', kind: 'partly' };
+    if (code === 3) return { label: 'Overcast', kind: 'cloudy' };
+    if (code === 45 || code === 48) return { label: 'Fog', kind: 'fog' };
+    if (code >= 51 && code <= 57) return { label: code >= 56 ? 'Freezing drizzle' : 'Drizzle', kind: 'drizzle' };
+    if (code >= 61 && code <= 67) return { label: code >= 66 ? 'Freezing rain' : code === 65 ? 'Heavy rain' : 'Rain', kind: 'rain' };
+    if (code >= 71 && code <= 77) return { label: code === 77 ? 'Snow grains' : code === 75 ? 'Heavy snow' : 'Snow', kind: 'snow' };
+    if (code >= 80 && code <= 82) return { label: code === 82 ? 'Violent showers' : 'Rain showers', kind: 'rain' };
+    if (code === 85 || code === 86) return { label: 'Snow showers', kind: 'snow' };
+    if (code >= 95) return { label: 'Thunderstorm', kind: 'storm' };
+    return { label: 'Unknown', kind: 'cloudy' };
+  }
+
+  // Turn a weather report into scene targets (all 0..1)
+  function sceneFor(code, isDay, windKmh) {
+    const t = { cloud: 0.3, rain: 0, drizzle: 0, snow: 0, fog: 0, storm: 0, night: isDay ? 0 : 1, wind: clamp((windKmh - 8) / 42, 0, 1) };
+    switch (true) {
+      case code === 0: t.cloud = 0.04; break;
+      case code === 1: t.cloud = 0.22; break;
+      case code === 2: t.cloud = 0.5; break;
+      case code === 3: t.cloud = 0.95; break;
+      case code === 45 || code === 48: t.cloud = 0.75; t.fog = 1; break;
+      case code >= 51 && code <= 57: t.cloud = 0.9; t.drizzle = code === 51 ? 0.5 : code === 55 || code === 57 ? 1 : 0.75; break;
+      case code === 61: t.cloud = 0.9; t.rain = 0.45; break;
+      case code === 63 || code === 66: t.cloud = 0.95; t.rain = 0.7; break;
+      case code === 65 || code === 67: t.cloud = 1; t.rain = 1; break;
+      case code === 71 || code === 77: t.cloud = 0.9; t.snow = 0.45; break;
+      case code === 73: t.cloud = 0.95; t.snow = 0.7; break;
+      case code === 75: t.cloud = 1; t.snow = 1; break;
+      case code === 80: t.cloud = 0.8; t.rain = 0.55; break;
+      case code === 81: t.cloud = 0.9; t.rain = 0.8; break;
+      case code === 82: t.cloud = 1; t.rain = 1; break;
+      case code === 85: t.cloud = 0.9; t.snow = 0.65; break;
+      case code === 86: t.cloud = 1; t.snow = 0.95; break;
+      case code >= 95: t.cloud = 1; t.storm = 1; t.rain = code === 95 ? 0.8 : 1; break;
+    }
+    return t;
+  }
+
+  const PRESETS = {
+    clear:   { code: 0,  wind: 6 },
+    partly:  { code: 2,  wind: 12 },
+    cloudy:  { code: 3,  wind: 14 },
+    windy:   { code: 1,  wind: 55 },
+    fog:     { code: 45, wind: 3 },
+    drizzle: { code: 53, wind: 10 },
+    rain:    { code: 63, wind: 18 },
+    heavy:   { code: 65, wind: 30 },
+    storm:   { code: 95, wind: 38 },
+    snow:    { code: 73, wind: 12 }
+  };
+
+  /* =========================================================
+     Small weather icons for the control
+     ========================================================= */
+  function iconSVG(kind, night) {
+    const sun = '<circle cx="12" cy="12" r="5" fill="#ffc93c"/><g stroke="#ffb300" stroke-width="2" stroke-linecap="round"><path d="M12 1.5v2.5M12 20v2.5M1.5 12H4M20 12h2.5M4.6 4.6l1.8 1.8M17.6 17.6l1.8 1.8M4.6 19.4l1.8-1.8M17.6 6.4l1.8-1.8"/></g>';
+    const moon = '<path d="M19 14.5A8 8 0 0 1 9.5 5a8 8 0 1 0 9.5 9.5z" fill="#f2eecf"/>';
+    const cloud = (fill, y = 0) => `<path transform="translate(0 ${y})" d="M7 19h10.5a4 4 0 0 0 .4-8 5.5 5.5 0 0 0-10.6-1.3A4.7 4.7 0 0 0 7 19z" fill="${fill}"/>`;
+    const small = night ? '<g transform="translate(-3 -4) scale(.75)">' + moon + '</g>' : '<g transform="translate(-3 -4) scale(.75)">' + sun + '</g>';
+    switch (kind) {
+      case 'clear': return `<svg viewBox="0 0 24 24">${night ? moon : sun}</svg>`;
+      case 'partly': return `<svg viewBox="0 0 24 24">${small}${cloud('#e9eef3', 1)}</svg>`;
+      case 'cloudy': return `<svg viewBox="0 0 24 24">${cloud('#b9c3cc', -3)}${cloud('#e4e9ee', 1)}</svg>`;
+      case 'fog': return `<svg viewBox="0 0 24 24">${cloud('#cfd6dd', -4)}<g stroke="#aab4bd" stroke-width="2" stroke-linecap="round"><path d="M4 17h16M6 21h12"/></g></svg>`;
+      case 'drizzle':
+      case 'rain': return `<svg viewBox="0 0 24 24">${cloud('#c3ccd5', -4)}<g stroke="#4f9be8" stroke-width="2" stroke-linecap="round"><path d="M8 18l-1 3M12 18l-1 3M16 18l-1 3"/></g></svg>`;
+      case 'storm': return `<svg viewBox="0 0 24 24">${cloud('#8c97a3', -4)}<path d="M12.5 14l-3 5h3l-1.5 4 4.5-6h-3l1.5-3z" fill="#ffd23f"/></svg>`;
+      case 'snow': return `<svg viewBox="0 0 24 24">${cloud('#d5dde4', -4)}<g fill="#ffffff" stroke="#9fb3c6" stroke-width=".6"><circle cx="8" cy="19" r="1.4"/><circle cx="12" cy="21" r="1.4"/><circle cx="16" cy="19" r="1.4"/></g></svg>`;
+    }
+    return '';
+  }
+
+  /* =========================================================
+     Helpers
+     ========================================================= */
+  function layer(w = W, h = H) {
+    const c = document.createElement('canvas');
+    c.width = Math.max(1, Math.round(w * dpr));
+    c.height = Math.max(1, Math.round(h * dpr));
+    const x = c.getContext('2d');
+    x.setTransform(dpr, 0, 0, dpr, 0, 0);
+    return { c, x };
+  }
+  const hex = h => { const v = parseInt(h.slice(1), 16); return [(v >> 16) & 255, (v >> 8) & 255, v & 255]; };
+  const lerp3 = (a, b, k) => [a[0] + (b[0] - a[0]) * k, a[1] + (b[1] - a[1]) * k, a[2] + (b[2] - a[2]) * k];
+  const rgb = (c, a = 1) => `rgba(${Math.round(c[0])},${Math.round(c[1])},${Math.round(c[2])},${a})`;
+  const shade = (h, k) => {
+    const [r, g, b] = hex(h);
+    const f = c => Math.round(k < 0 ? c * (1 + k) : c + (255 - c) * k);
+    return `rgb(${f(r)},${f(g)},${f(b)})`;
+  };
+  function seeded(seed) {
+    let a = seed >>> 0;
+    return () => {
+      a = (a + 0x6D2B79F5) | 0;
+      let t = Math.imul(a ^ (a >>> 15), 1 | a);
+      t = (t + Math.imul(t ^ (t >>> 7), 61 | t)) ^ t;
+      return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+    };
+  }
+
+  /* =========================================================
+     Scene state: current values ease toward targets
+     ========================================================= */
+  const cur = { cloud: 0.2, rain: 0, drizzle: 0, snow: 0, fog: 0, storm: 0, night: 0, wind: 0.1, cover: 0 };
+  let tgt = { ...cur };
+  {
+    const hr = new Date().getHours();
+    cur.night = tgt.night = (hr < 6 || hr >= 18) ? 1 : 0;
+  }
+  let firstScene = true;
+  function setTargets(t) {
+    tgt = { ...t, cover: t.snow > 0.2 ? clamp(t.snow + 0.35, 0, 1) : 0 };
+    if (firstScene) { Object.assign(cur, tgt); firstScene = false; }
+  }
+
+  /* =========================================================
+     Landscape (pre-rendered for green and snowy versions)
+     ========================================================= */
+  let seed = Math.floor(Math.random() * 1e9);
+  let land = null;    // { farG, farS, nearG, nearS, windows }
+  let scratch, moonSprite, cloudSprites, fogSprites;
+
+  function hills(R) {
+    const o = [R() * 10, R() * 10, R() * 10, R() * 10, R() * 10];
+    return {
+      far: x => H * 0.55 - (Math.sin(x * 0.0042 + o[0]) * 0.035 + Math.sin(x * 0.011 + o[1]) * 0.014) * H,
+      mid: x => H * 0.64 - (Math.sin(x * 0.0031 + o[2]) * 0.04 + Math.sin(x * 0.0095 + o[3]) * 0.012) * H,
+      meadow: x => H * 0.75 - Math.sin(x * 0.0024 + o[4]) * 0.018 * H
+    };
+  }
+
+  function drawRoundTree(x, bx, by, h, snowy, R, haze = 0) {
+    const tw = Math.max(1.5, h * 0.07);
+    x.fillStyle = shade('#4a3524', -haze * 0.2);
+    x.fillRect(bx - tw / 2, by - h * 0.45, tw, h * 0.45 + 2);
+    const r = h * 0.3;
+    const cy = by - h * 0.62;
+    const blobs = [];
+    for (let k = 0; k < 9; k++) blobs.push([bx + (R() - 0.5) * r * 1.3, cy + (R() - 0.5) * r * 1.1, r * (0.5 + R() * 0.35)]);
+    for (const [px, py, pr] of blobs) {
+      const g = x.createRadialGradient(px - pr * 0.35, py - pr * 0.4, pr * 0.1, px, py, pr);
+      g.addColorStop(0, snowy ? '#5d7a62' : '#7fb35a');
+      g.addColorStop(1, snowy ? '#2f4536' : '#3c6e2b');
+      x.fillStyle = g;
+      x.beginPath(); x.arc(px, py, pr, 0, TAU); x.fill();
+    }
+    if (snowy) {
+      x.fillStyle = 'rgba(248,251,255,0.95)';
+      for (const [px, py, pr] of blobs) { x.beginPath(); x.ellipse(px, py - pr * 0.55, pr * 0.75, pr * 0.38, 0, Math.PI, TAU); x.fill(); }
+    }
+  }
+
+  function drawConifer(x, bx, by, h, snowy) {
+    x.fillStyle = '#3b2a1c';
+    x.fillRect(bx - h * 0.03, by - h * 0.15, h * 0.06, h * 0.15 + 2);
+    const tiers = 4;
+    for (let k = 0; k < tiers; k++) {
+      const ty = by - h * 0.12 - k * h * 0.2, tw = h * (0.34 - k * 0.07);
+      const g = x.createLinearGradient(bx - tw, 0, bx + tw, 0);
+      g.addColorStop(0, snowy ? '#1f3a2c' : '#24502f');
+      g.addColorStop(0.55, snowy ? '#2f5440' : '#346b3c');
+      g.addColorStop(1, snowy ? '#1a3226' : '#1f4628');
+      x.fillStyle = g;
+      x.beginPath();
+      x.moveTo(bx - tw, ty);
+      x.lineTo(bx, ty - h * 0.32);
+      x.lineTo(bx + tw, ty);
+      x.closePath();
+      x.fill();
+      if (snowy) {
+        x.fillStyle = 'rgba(250,252,255,0.95)';
+        x.beginPath();
+        x.moveTo(bx - tw * 0.85, ty - 1);
+        x.lineTo(bx, ty - h * 0.3);
+        x.lineTo(bx + tw * 0.85, ty - 1);
+        x.quadraticCurveTo(bx, ty - h * 0.12, bx - tw * 0.85, ty - 1);
+        x.fill();
+      }
+    }
+  }
+
+  function renderLand(snowy) {
+    const R = seeded(seed);
+    const hl = hills(R);
+    const far = layer(), near = layer();
+    const windows = [];
+
+    /* ---- far hills ---- */
+    let x = far.x;
+    let g = x.createLinearGradient(0, H * 0.45, 0, H * 0.7);
+    g.addColorStop(0, snowy ? '#e9eff4' : '#86ab84');
+    g.addColorStop(1, snowy ? '#cfdbe4' : '#6d9a69');
+    x.fillStyle = g;
+    x.beginPath(); x.moveTo(0, H);
+    for (let px = 0; px <= W; px += 8) x.lineTo(px, hl.far(px));
+    x.lineTo(W, H); x.closePath(); x.fill();
+    // distant woodland dots along the ridges
+    for (let i = 0; i < W * 0.9; i++) {
+      const px = R() * W, top = hl.far(px);
+      const py = top + R() * H * 0.06;
+      x.fillStyle = snowy ? `rgba(70,95,90,${0.25 + R() * 0.3})` : `rgba(45,85,45,${0.25 + R() * 0.35})`;
+      x.beginPath(); x.ellipse(px, py, (1.5 + R() * 3) * S, (1.2 + R() * 2.4) * S, 0, 0, TAU); x.fill();
+    }
+    // atmospheric haze
+    x.globalCompositeOperation = 'source-atop';
+    x.fillStyle = snowy ? 'rgba(200,215,230,0.35)' : 'rgba(175,205,220,0.42)';
+    x.fillRect(0, 0, W, H);
+    x.globalCompositeOperation = 'source-over';
+
+    /* ---- mid hill with trees and a cottage ---- */
+    x = near.x;
+    g = x.createLinearGradient(0, H * 0.55, 0, H * 0.78);
+    g.addColorStop(0, snowy ? '#f3f7fa' : '#77a94f');
+    g.addColorStop(1, snowy ? '#d9e3eb' : '#558c38');
+    x.fillStyle = g;
+    x.beginPath(); x.moveTo(0, H);
+    for (let px = 0; px <= W; px += 8) x.lineTo(px, hl.mid(px));
+    x.lineTo(W, H); x.closePath(); x.fill();
+
+    const houseX = W * (0.62 + R() * 0.12);
+    const trees = [];
+    for (let px = R() * 30; px < W; px += (18 + R() * 46) * S) {
+      if (Math.abs(px - houseX) < 70 * S) continue;
+      trees.push({ px, kind: R() < 0.45 ? 'con' : 'round', h: (30 + R() * 34) * S, dy: R() * H * 0.03 });
+    }
+    trees.sort((a, b) => a.dy - b.dy);
+    for (const t of trees) {
+      const by = hl.mid(t.px) + t.dy + 4;
+      if (t.kind === 'con') drawConifer(x, t.px, by, t.h, snowy);
+      else drawRoundTree(x, t.px, by, t.h, snowy, R);
+    }
+
+    // cottage
+    {
+      const s = 1.15 * S, bx = houseX, by = hl.mid(houseX) + 14 * s;
+      const w = 62 * s, h = 34 * s;
+      x.fillStyle = 'rgba(0,0,0,0.18)';
+      x.beginPath(); x.ellipse(bx, by + 1, w * 0.7, 4 * s, 0, 0, TAU); x.fill();
+      // walls
+      const wg = x.createLinearGradient(bx - w / 2, 0, bx + w / 2, 0);
+      wg.addColorStop(0, '#d9c7a4'); wg.addColorStop(0.6, '#efe2c6'); wg.addColorStop(1, '#cdb994');
+      x.fillStyle = wg;
+      x.fillRect(bx - w / 2, by - h, w, h);
+      // chimney
+      x.fillStyle = '#8a5a45';
+      x.fillRect(bx + w * 0.18, by - h - 26 * s, 8 * s, 18 * s);
+      // roof
+      x.fillStyle = snowy ? '#f7fafc' : '#8e3a2b';
+      x.beginPath();
+      x.moveTo(bx - w / 2 - 6 * s, by - h + 2 * s);
+      x.lineTo(bx, by - h - 24 * s);
+      x.lineTo(bx + w / 2 + 6 * s, by - h + 2 * s);
+      x.closePath(); x.fill();
+      x.fillStyle = snowy ? 'rgba(150,170,190,0.45)' : 'rgba(0,0,0,0.22)';
+      x.beginPath();
+      x.moveTo(bx, by - h - 24 * s);
+      x.lineTo(bx + w / 2 + 6 * s, by - h + 2 * s);
+      x.lineTo(bx + w / 2 - 6 * s, by - h + 2 * s);
+      x.closePath(); x.fill();
+      if (!snowy) {
+        x.strokeStyle = 'rgba(60,20,10,0.35)'; x.lineWidth = 0.8;
+        for (let k = 1; k < 6; k++) {
+          const yy = by - h - 24 * s + k * 4.4 * s, half = (k * 4.4 / 26) * (w / 2 + 6 * s);
+          x.beginPath(); x.moveTo(bx - half, yy); x.lineTo(bx + half, yy); x.stroke();
+        }
+      }
+      // door
+      x.fillStyle = '#5b3a26';
+      x.fillRect(bx - 5 * s, by - 18 * s, 10 * s, 18 * s);
+      x.fillStyle = '#d7b46a';
+      x.beginPath(); x.arc(bx + 3 * s, by - 9 * s, 0.9 * s, 0, TAU); x.fill();
+      // windows (lit at night)
+      for (const wx of [bx - w * 0.32, bx + w * 0.32]) {
+        const ww = 11 * s, wh = 10 * s, wy = by - h + 9 * s;
+        x.fillStyle = '#e8dcc2';
+        x.fillRect(wx - ww / 2 - 1.5 * s, wy - 1.5 * s, ww + 3 * s, wh + 3 * s);
+        const gl = x.createLinearGradient(0, wy, 0, wy + wh);
+        gl.addColorStop(0, '#8fb2c9'); gl.addColorStop(1, '#3d5566');
+        x.fillStyle = gl;
+        x.fillRect(wx - ww / 2, wy, ww, wh);
+        x.fillStyle = '#e8dcc2';
+        x.fillRect(wx - 0.6 * s, wy, 1.2 * s, wh);
+        x.fillRect(wx - ww / 2, wy + wh / 2 - 0.6 * s, ww, 1.2 * s);
+        windows.push({ x: wx, y: wy, w: ww, h: wh });
+      }
+      windows.chimney = { x: bx + w * 0.18 + 4 * s, y: by - h - 26 * s };
+    }
+
+    /* ---- meadow ---- */
+    g = x.createLinearGradient(0, H * 0.72, 0, H);
+    g.addColorStop(0, snowy ? '#f8fbfd' : '#82b44c');
+    g.addColorStop(0.4, snowy ? '#eef3f7' : '#679d38');
+    g.addColorStop(1, snowy ? '#d7e1ea' : '#3e7626');
+    x.fillStyle = g;
+    x.beginPath(); x.moveTo(0, H);
+    for (let px = 0; px <= W; px += 8) x.lineTo(px, hl.meadow(px));
+    x.lineTo(W, H); x.closePath(); x.fill();
+
+    // ground texture
+    const strokes = Math.round(W * H * 0.004);
+    x.lineCap = 'round';
+    for (let i = 0; i < strokes; i++) {
+      const px = R() * W, top = hl.meadow(px), py = top + R() * (H - top);
+      const depth = (py - top) / (H - top);
+      if (snowy) {
+        x.fillStyle = R() < 0.5 ? 'rgba(160,180,200,0.18)' : 'rgba(255,255,255,0.6)';
+        x.fillRect(px, py, 1 + depth * 1.5, 1);
+      } else {
+        const len = (2 + depth * 8) * S;
+        x.strokeStyle = pick(['#6e9c40', '#5a8a32', '#86b356', '#4b7a2a', '#9cc25e']);
+        x.lineWidth = 0.5 + depth;
+        x.beginPath(); x.moveTo(px, py); x.lineTo(px + (R() - 0.5) * len * 0.5, py - len); x.stroke();
+      }
+    }
+
+    // a winding path up to the cottage
+    {
+      const top = hl.meadow(houseX);
+      x.beginPath();
+      const steps = 40;
+      const pts = [];
+      for (let k = 0; k <= steps; k++) {
+        const u = k / steps;
+        const py = top + (H + 10 - top) * u;
+        const px = houseX + Math.sin(u * 3.2 + 0.5) * W * 0.06 * u - (houseX - W * 0.5) * u * u;
+        pts.push([px, py, (4 + u * 70) * S]);
+      }
+      for (const [px, py, hw] of pts) x.lineTo(px - hw / 2, py);
+      for (let k = pts.length - 1; k >= 0; k--) x.lineTo(pts[k][0] + pts[k][2] / 2, pts[k][1]);
+      x.closePath();
+      const pg = x.createLinearGradient(0, top, 0, H);
+      pg.addColorStop(0, snowy ? '#e4eaf0' : '#b8a27c');
+      pg.addColorStop(1, snowy ? '#c9d4de' : '#8f7752');
+      x.fillStyle = pg;
+      x.fill();
+      x.fillStyle = snowy ? 'rgba(140,160,180,0.25)' : 'rgba(70,50,30,0.25)';
+      for (let i = 0; i < 260; i++) {
+        const k = Math.floor(R() * pts.length), [px, py, hw] = pts[k];
+        x.beginPath(); x.arc(px + (R() - 0.5) * hw * 0.9, py + (R() - 0.5) * 6, (0.5 + R() * 1.6) * S * (0.4 + k / pts.length), 0, TAU); x.fill();
+      }
+    }
+
+    // framing trees in the near meadow
+    {
+      const R2 = seeded(seed + 7);
+      const spots = [W * (0.04 + R2() * 0.06), W * (0.9 + R2() * 0.08)];
+      for (const px of spots) {
+        const by = hl.meadow(px) + H * 0.05;
+        if (R2() < 0.5) drawConifer(x, px, by, (120 + R2() * 50) * S, snowy);
+        else drawRoundTree(x, px, by, (130 + R2() * 50) * S, snowy, R2);
+      }
+    }
+
+    return { far, near, windows };
+  }
+
+  function buildLand() {
+    const g = renderLand(false), s = renderLand(true);
+    land = { farG: g.far, nearG: g.near, farS: s.far, nearS: s.near, windows: g.windows };
+  }
+
+  /* ---------- Sprites: moon, clouds, fog ---------- */
+  function renderMoon() {
+    const R = 120, c = document.createElement('canvas');
+    c.width = c.height = R * 2 + 4;
+    const x = c.getContext('2d');
+    x.translate(R + 2, R + 2);
+    x.beginPath(); x.arc(0, 0, R, 0, TAU); x.clip();
+    const g = x.createRadialGradient(-R * 0.25, -R * 0.25, R * 0.1, 0, 0, R);
+    g.addColorStop(0, '#fbf9ef'); g.addColorStop(0.7, '#e9e5d6'); g.addColorStop(1, '#bdb8a6');
+    x.fillStyle = g; x.fillRect(-R, -R, R * 2, R * 2);
+    x.filter = 'blur(6px)';
+    for (const [mx, my, mr, a] of [[-30, -35, 38, 0.32], [20, -45, 26, 0.28], [35, 5, 32, 0.3], [-15, 20, 30, 0.25], [-55, 15, 20, 0.22], [10, 55, 22, 0.2]]) {
+      x.fillStyle = `rgba(110,108,98,${a})`;
+      x.beginPath(); x.arc(mx, my, mr, 0, TAU); x.fill();
+    }
+    x.filter = 'none';
+    for (let i = 0; i < 40; i++) {
+      const cx = rand(-R, R), cy = rand(-R, R), cr = rand(2, 7);
+      x.strokeStyle = 'rgba(90,88,80,0.18)'; x.lineWidth = 1;
+      x.beginPath(); x.arc(cx, cy, cr, 0, TAU); x.stroke();
+    }
+    return c;
+  }
+
+  function renderCloud(seedN, dark) {
+    const R = seeded(seedN);
+    const cw = 420, ch = 200;
+    const c = document.createElement('canvas');
+    c.width = cw; c.height = ch;
+    const x = c.getContext('2d');
+    const puffs = [];
+    const n = 22 + Math.floor(R() * 12);
+    for (let k = 0; k < n; k++) {
+      const u = R() * 2 - 1;
+      const px = cw / 2 + u * cw * 0.36;
+      const r = (26 + R() * 34) * (1 - Math.abs(u) * 0.55);
+      const py = ch * 0.62 - R() * r * 0.9;
+      puffs.push([px, py, r]);
+    }
+    x.filter = 'blur(4px)';
+    x.fillStyle = dark ? '#4b535e' : '#ffffff';
+    for (const [px, py, r] of puffs) { x.beginPath(); x.arc(px, py, r, 0, TAU); x.fill(); }
+    x.fillRect(cw * 0.2, ch * 0.55, cw * 0.6, ch * 0.08);
+    x.filter = 'none';
+    x.globalCompositeOperation = 'source-atop';
+    const g = x.createLinearGradient(0, ch * 0.15, 0, ch * 0.75);
+    if (dark) {
+      g.addColorStop(0, 'rgba(140,150,162,0.6)');
+      g.addColorStop(0.5, 'rgba(90,98,110,0)');
+      g.addColorStop(1, 'rgba(25,30,38,0.55)');
+    } else {
+      g.addColorStop(0, 'rgba(255,255,255,0)');
+      g.addColorStop(0.55, 'rgba(225,230,238,0.2)');
+      g.addColorStop(1, 'rgba(150,162,180,0.65)');
+    }
+    x.fillStyle = g;
+    x.fillRect(0, 0, cw, ch);
+    return c;
+  }
+
+  function renderFog(col) {
+    const c = document.createElement('canvas');
+    c.width = 512; c.height = 200;
+    const x = c.getContext('2d');
+    x.translate(256, 100);
+    x.scale(2.4, 1);
+    const g = x.createRadialGradient(0, 0, 0, 0, 0, 100);
+    g.addColorStop(0, col + 'cc');
+    g.addColorStop(0.6, col + '55');
+    g.addColorStop(1, col + '00');
+    x.fillStyle = g;
+    x.beginPath(); x.arc(0, 0, 100, 0, TAU); x.fill();
+    return c;
+  }
+
+  /* =========================================================
+     Moving things
+     ========================================================= */
+  let clouds = [], stars = [], drops = [], splashes = [], flakes = [], leaves = [], fogBlobs = [], blades = [], smoke = [];
+  const lightning = { timer: 2, flash: 0, bolt: null, second: 0 };
+
+  function setupMovers() {
+    clouds = [];
+    const N = 16;
+    const order = Array.from({ length: N }, (_, i) => i / N).sort(() => Math.random() - 0.5);
+    for (let i = 0; i < N; i++) {
+      clouds.push({
+        x: rand(-200, W + 200), y: rand(0.03, 0.4) * H, depth: rand(0.3, 1),
+        sc: rand(0.7, 1.5), idx: i % cloudSprites.length, th: order[i]
+      });
+    }
+    clouds.sort((a, b) => a.depth - b.depth);
+
+    stars = [];
+    for (let i = 0; i < Math.round(W * H / 5000); i++) stars.push({ x: rand(0, W), y: rand(0, H * 0.55), r: rand(0.5, 1.5), ph: rand(0, 6), sp: rand(0.8, 2.5) });
+
+    drops = [];
+    const maxDrops = Math.min(1100, Math.round(W * H / 900));
+    for (let i = 0; i < maxDrops; i++) drops.push(newDrop(true));
+    splashes = [];
+
+    flakes = [];
+    const maxFlakes = Math.min(700, Math.round(W * H / 1500));
+    for (let i = 0; i < maxFlakes; i++) flakes.push({ x: rand(0, W), y: rand(-H, H), z: Math.pow(Math.random(), 1.4), ph: rand(0, TAU) });
+
+    leaves = [];
+    for (let i = 0; i < 30; i++) leaves.push(newLeaf(true));
+
+    fogBlobs = [];
+    for (let i = 0; i < 12; i++) fogBlobs.push({ x: rand(-300, W), y: rand(0.48, 1.0) * H, sc: rand(0.8, 1.8) * S, v: rand(0.1, 0.35), front: i % 3 === 0 });
+
+    blades = [];
+    for (let px = 0; px < W; px += rand(2.5, 6)) {
+      blades.push({ x: px, h: rand(16, 54) * S, w: rand(1.4, 3) * S, lean: rand(-0.35, 0.35), ph: rand(0, TAU), c: Math.floor(Math.random() * 3) });
+    }
+    smoke = [];
+  }
+
+  function newDrop(initial) {
+    const z = rand(0.35, 1);
+    return { x: rand(-W * 0.2, W * 1.1), y: initial ? rand(-H, H) : rand(-120, -10), z, land: H * 0.74 + z * H * 0.26 };
+  }
+  function newLeaf(initial) {
+    return {
+      x: initial ? rand(0, W) : rand(-80, -10), y: rand(H * 0.3, H * 0.9), z: rand(0.5, 1.2),
+      rot: rand(0, TAU), vr: rand(-0.15, 0.15), ph: rand(0, TAU),
+      col: pick(['#c9782b', '#d99a2b', '#9a5a22', '#7a9a32', '#b5482a'])
+    };
+  }
+
+  /* =========================================================
+     Resize
+     ========================================================= */
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = Math.round(W * dpr);
+    canvas.height = Math.round(H * dpr);
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    S = clamp(W / 1200, 0.6, 1.1);
+    if (!moonSprite) moonSprite = renderMoon();
+    if (!cloudSprites) {
+      cloudSprites = [];
+      for (let i = 0; i < 6; i++) cloudSprites.push({ light: renderCloud(101 + i * 17, false), dark: renderCloud(101 + i * 17, true) });
+    }
+    if (!fogSprites) fogSprites = { light: renderFog('#e4e9ed'), dark: renderFog('#2c3644') };
+    scratch = layer();
+    buildLand();
+    setupMovers();
+  }
+
+  /* =========================================================
+     Drawing
+     ========================================================= */
+  const SKY = {
+    dayClear:   [hex('#2f7fd6'), hex('#78b5ea'), hex('#d4ebf6')],
+    dayOver:    [hex('#7d8894'), hex('#9ea8b1'), hex('#c6cbcf')],
+    storm:      [hex('#2b3138'), hex('#3d454e'), hex('#5a636b')],
+    nightClear: [hex('#02050f'), hex('#0a1634'), hex('#1e3156')],
+    nightOver:  [hex('#0a0d13'), hex('#141a23'), hex('#222a35')]
+  };
+  function skyColors() {
+    const ce = clamp(Math.max(cur.cloud, cur.fog * 0.85), 0, 1);
+    const out = [];
+    for (let i = 0; i < 3; i++) {
+      let day = lerp3(SKY.dayClear[i], SKY.dayOver[i], ce);
+      day = lerp3(day, SKY.storm[i], clamp(cur.storm * 0.85 + cur.rain * 0.3, 0, 1));
+      let nt = lerp3(SKY.nightClear[i], SKY.nightOver[i], ce);
+      nt = lerp3(nt, [6, 8, 12], cur.storm * 0.5);
+      out.push(lerp3(day, nt, cur.night));
+    }
+    return out;
+  }
+
+  function sunMoonPos() {
+    return { x: Math.max(90, W * 0.12), y: Math.max(90, H * 0.15) };
+  }
+
+  function drawSky(t) {
+    const [c0, c1, c2] = skyColors();
+    const g = ctx.createLinearGradient(0, 0, 0, H * 0.75);
+    g.addColorStop(0, rgb(c0)); g.addColorStop(0.55, rgb(c1)); g.addColorStop(1, rgb(c2));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    const ce = clamp(Math.max(cur.cloud, cur.fog), 0, 1);
+    const starA = cur.night * Math.pow(1 - ce, 2);
+    if (starA > 0.01) {
+      for (const s of stars) {
+        ctx.fillStyle = `rgba(255,255,240,${starA * (0.35 + 0.65 * (0.5 + 0.5 * Math.sin(t * s.sp + s.ph)))})`;
+        ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, TAU); ctx.fill();
+      }
+    }
+
+    const p = sunMoonPos();
+    const veil = clamp(ce * 0.9 + cur.storm * 0.1, 0, 1);
+    const sunA = (1 - cur.night) * (1 - veil * 0.92);
+    if (sunA > 0.01) {
+      const sy = p.y + cur.night * H * 0.4;
+      const bloom = ctx.createRadialGradient(p.x, sy, 0, p.x, sy, 240 * S);
+      bloom.addColorStop(0, `rgba(255,252,235,${0.85 * sunA})`);
+      bloom.addColorStop(0.18, `rgba(255,244,205,${0.4 * sunA})`);
+      bloom.addColorStop(1, 'rgba(255,240,200,0)');
+      ctx.fillStyle = bloom;
+      ctx.fillRect(p.x - 250 * S, sy - 250 * S, 500 * S, 500 * S);
+      ctx.fillStyle = `rgba(255,255,246,${sunA})`;
+      ctx.beginPath(); ctx.arc(p.x, sy, 30 * S, 0, TAU); ctx.fill();
+    }
+    // behind thin cloud the sun is still a soft bright patch
+    if ((1 - cur.night) * veil > 0.05 && cur.storm < 0.6) {
+      const a = (1 - cur.night) * veil * (1 - cur.storm) * 0.35;
+      const gl = ctx.createRadialGradient(p.x, p.y, 0, p.x, p.y, 200 * S);
+      gl.addColorStop(0, `rgba(255,255,250,${a})`); gl.addColorStop(1, 'rgba(255,255,250,0)');
+      ctx.fillStyle = gl;
+      ctx.fillRect(p.x - 210 * S, p.y - 210 * S, 420 * S, 420 * S);
+    }
+    const moonA = cur.night * (1 - veil * 0.85);
+    if (moonA > 0.01) {
+      const my = p.y - (1 - cur.night) * (p.y + 80);
+      const glow = ctx.createRadialGradient(p.x, my, 0, p.x, my, 180 * S);
+      glow.addColorStop(0, `rgba(210,220,255,${0.3 * moonA})`);
+      glow.addColorStop(1, 'rgba(210,220,255,0)');
+      ctx.fillStyle = glow;
+      ctx.fillRect(p.x - 190 * S, my - 190 * S, 380 * S, 380 * S);
+      const R = 32 * S;
+      ctx.globalAlpha = moonA;
+      ctx.drawImage(moonSprite, p.x - R, my - R, R * 2, R * 2);
+      ctx.globalAlpha = 1;
+    }
+  }
+
+  function drawClouds(k) {
+    const ce = clamp(Math.max(cur.cloud, cur.fog * 0.6), 0, 1);
+    const darkness = clamp(0.15 * cur.cloud + 0.85 * cur.storm + 0.15 * cur.rain + 0.15 * cur.snow, 0, 1);
+    const nightDim = 1 - cur.night * 0.45;
+    // overcast blanket
+    const blanket = clamp((ce - 0.6) * 2.5, 0, 1);
+    if (blanket > 0) {
+      const g = ctx.createLinearGradient(0, 0, 0, H * 0.5);
+      const top = lerp3(lerp3(hex('#aab3bb'), hex('#3b434c'), cur.storm), hex('#161b22'), cur.night);
+      g.addColorStop(0, rgb(top, 0.85 * blanket));
+      g.addColorStop(1, rgb(top, 0));
+      ctx.fillStyle = g;
+      ctx.fillRect(0, 0, W, H * 0.5);
+    }
+    const speed = (0.06 + cur.wind * 1.8) * k;
+    for (const c of clouds) {
+      c.x += speed * (0.35 + c.depth * 0.9);
+      const sp = cloudSprites[c.idx];
+      const w = 420 * c.sc * S * (1 + cur.storm * 0.4), h = 200 * c.sc * S * (1 + cur.storm * 0.4);
+      if (c.x - w / 2 > W + 40) { c.x = -w / 2 - rand(20, 200); c.y = rand(0.03, 0.4) * H; }
+      const vis = clamp((ce * 1.15 - c.th) * 5, 0, 1);
+      if (vis <= 0.01) continue;
+      const a = vis * (0.6 + 0.4 * c.depth) * nightDim * (1 - cur.fog * 0.65);
+      const y = c.y + cur.storm * 20 * S;
+      const dk = Math.max(darkness, cur.night * 0.9);
+      ctx.globalAlpha = a * (1 - dk);
+      ctx.drawImage(sp.light, c.x - w / 2, y - h / 2, w, h);
+      ctx.globalAlpha = a * dk;
+      ctx.drawImage(sp.dark, c.x - w / 2, y - h / 2, w, h);
+    }
+    ctx.globalAlpha = 1;
+  }
+
+  function lightLevel() {
+    const day = 1 - 0.3 * Math.max(cur.cloud, cur.fog * 0.6) - 0.36 * cur.storm - 0.2 * cur.rain - 0.08 * cur.drizzle - 0.06 * cur.snow;
+    return clamp((1 - cur.night) * day + cur.night * (0.16 + cur.cover * 0.12), 0.08, 1);
+  }
+
+  function drawLand(t) {
+    const X = scratch.x;
+    X.globalCompositeOperation = 'source-over';
+    X.clearRect(0, 0, W, H);
+    const cv = cur.cover;
+    if (cv < 1) X.drawImage(land.farG.c, 0, 0, W, H);
+    if (cv > 0) { X.globalAlpha = cv; X.drawImage(land.farS.c, 0, 0, W, H); X.globalAlpha = 1; }
+    // fog between the far hills and the near ground
+    const fogCol = lerp3(lerp3(hex('#dde3e8'), hex('#8b939b'), cur.storm * 0.6), hex('#273140'), cur.night);
+    const farFog = clamp(cur.fog * 0.75 + cur.rain * 0.25 + cur.snow * 0.3 + cur.drizzle * 0.2, 0, 0.85);
+    if (farFog > 0.01) {
+      X.globalCompositeOperation = 'source-atop';
+      X.fillStyle = rgb(fogCol, farFog);
+      X.fillRect(0, 0, W, H);
+      X.globalCompositeOperation = 'source-over';
+    }
+    if (cv < 1) X.drawImage(land.nearG.c, 0, 0, W, H);
+    if (cv > 0) { X.globalAlpha = cv; X.drawImage(land.nearS.c, 0, 0, W, H); X.globalAlpha = 1; }
+
+    // overall light: darker under cloud, blue and dim at night
+    const L = lightLevel();
+    const tint = lerp3(hex('#1d252d'), hex('#040a1c'), cur.night);
+    X.globalCompositeOperation = 'source-atop';
+    X.fillStyle = rgb(tint, clamp(1 - L, 0, 0.9));
+    X.fillRect(0, 0, W, H);
+    if (cur.night > 0.05) {
+      X.fillStyle = `rgba(60,80,140,${0.06 * cur.night})`;
+      X.fillRect(0, 0, W, H);
+    }
+    // wet ground looks darker and a little glossy
+    const wet = clamp(cur.rain + cur.drizzle * 0.5, 0, 1);
+    if (wet > 0.05) {
+      X.fillStyle = `rgba(10,20,30,${0.12 * wet})`;
+      X.fillRect(0, H * 0.7, W, H * 0.3);
+    }
+    X.globalCompositeOperation = 'source-over';
+    ctx.drawImage(scratch.c, 0, 0, W, H);
+
+    // lit cottage windows and chimney smoke
+    const glow = clamp((0.55 - L) * 2.2, 0, 1);
+    if (glow > 0.01) {
+      for (const w of land.windows) {
+        ctx.fillStyle = `rgba(255,200,110,${0.9 * glow})`;
+        ctx.fillRect(w.x - w.w / 2, w.y, w.w, w.h);
+        const g = ctx.createRadialGradient(w.x, w.y + w.h / 2, 0, w.x, w.y + w.h / 2, 40 * S);
+        g.addColorStop(0, `rgba(255,190,100,${0.35 * glow})`);
+        g.addColorStop(1, 'rgba(255,190,100,0)');
+        ctx.fillStyle = g;
+        ctx.fillRect(w.x - 40 * S, w.y + w.h / 2 - 40 * S, 80 * S, 80 * S);
+        ctx.fillStyle = `rgba(120,70,30,${0.6 * glow})`;
+        ctx.fillRect(w.x - 0.6 * S, w.y, 1.2 * S, w.h);
+        ctx.fillRect(w.x - w.w / 2, w.y + w.h / 2 - 0.6 * S, w.w, 1.2 * S);
+      }
+    }
+    return L;
+  }
+
+  function drawSmoke(k, L) {
+    const ch = land.windows.chimney;
+    if (!ch) return;
+    const want = clamp(0.25 + cur.cover * 0.6 + cur.night * 0.4 + cur.cloud * 0.2, 0, 1);
+    if (Math.random() < 0.12 * want * k) smoke.push({ x: ch.x + rand(-2, 2), y: ch.y, r: 3 * S, a: 0.35, vx: 0, life: 1 });
+    const col = lerp3(hex('#e9ecef'), hex('#5a6270'), 1 - L);
+    for (let i = smoke.length - 1; i >= 0; i--) {
+      const s = smoke[i];
+      s.life -= 0.006 * k;
+      if (s.life <= 0) { smoke.splice(i, 1); continue; }
+      s.vx += (cur.wind * 0.08 + 0.004) * k;
+      s.x += (s.vx + Math.sin(s.life * 8) * 0.15) * k;
+      s.y -= (0.45 - cur.wind * 0.25) * k;
+      s.r += 0.09 * S * k;
+      ctx.fillStyle = rgb(col, s.a * s.life);
+      ctx.beginPath(); ctx.arc(s.x, s.y, s.r, 0, TAU); ctx.fill();
+    }
+  }
+
+  const BLADE_COLS = ['#4f8a2e', '#5f9a38', '#3f7a26'];
+  function drawGrass(t, L) {
+    const a = 1 - cur.cover * 0.85;
+    if (a <= 0.02) return;
+    const tint = lerp3(hex('#1d252d'), hex('#040a1c'), cur.night);
+    const cols = BLADE_COLS.map(c => rgb(lerp3(hex(c), tint, clamp(1 - L, 0, 0.9)), a));
+    const gust = cur.wind * (0.7 + 0.3 * Math.sin(t * 1.7));
+    for (const b of blades) {
+      const sway = Math.sin(t * (1.2 + cur.wind * 2) + b.ph + b.x * 0.01) * (0.08 + cur.wind * 0.12);
+      const lean = b.lean + sway + gust * 0.9;
+      const tx = b.x + lean * b.h, ty = H + 4 - b.h * (1 - Math.abs(lean) * 0.25);
+      ctx.fillStyle = cols[b.c];
+      ctx.beginPath();
+      ctx.moveTo(b.x - b.w / 2, H + 4);
+      ctx.quadraticCurveTo(b.x + lean * b.h * 0.3 - b.w * 0.3, H + 4 - b.h * 0.55, tx, ty);
+      ctx.quadraticCurveTo(b.x + lean * b.h * 0.3 + b.w * 0.3, H + 4 - b.h * 0.55, b.x + b.w / 2, H + 4);
+      ctx.fill();
+    }
+  }
+
+  function drawFog(k) {
+    const f = clamp(cur.fog, 0, 1);
+    if (f < 0.01) return;
+    const n = cur.night;
+    for (const b of fogBlobs) {
+      b.x += (b.v + cur.wind * 0.6) * k;
+      const w = 512 * b.sc * 1.6, h = 200 * b.sc * 1.4;
+      if (b.x > W + 50) b.x = -w - rand(0, 200);
+      const a = f * (b.front ? 0.5 : 0.38);
+      ctx.globalAlpha = a * (1 - n);
+      ctx.drawImage(fogSprites.light, b.x, b.y - h / 2, w, h);
+      ctx.globalAlpha = a * n;
+      ctx.drawImage(fogSprites.dark, b.x, b.y - h / 2, w, h);
+    }
+    ctx.globalAlpha = 1;
+    const col = lerp3(hex('#dfe5ea'), hex('#222b38'), n);
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, rgb(col, 0.2 * f));
+    g.addColorStop(0.45, rgb(col, 0.32 * f));
+    g.addColorStop(0.68, rgb(col, 0.5 * f));
+    g.addColorStop(1, rgb(col, 0.3 * f));
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  function drawRain(k) {
+    const heavy = cur.rain, light = cur.drizzle;
+    const amount = clamp(heavy + light * 0.6, 0, 1);
+    const active = Math.floor(drops.length * amount);
+    if (active < 1 && !splashes.length) return;
+    const drizzleMix = light / Math.max(0.001, heavy + light);
+    const windX = (cur.wind * 7 + 0.6) * (1 + cur.storm * 0.5);
+    const col = lerp3(hex('#cfdbe6'), hex('#8796a8'), cur.night);
+    const alpha = (0.32 + heavy * 0.2) * (1 - cur.night * 0.35);
+    ctx.strokeStyle = rgb(col, alpha);
+    ctx.lineWidth = 0.9 + heavy * 0.5;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (let i = 0; i < active; i++) {
+      const d = drops[i];
+      const vy = (12 + 12 * d.z) * (1 - drizzleMix * 0.45);
+      const vx = windX * d.z;
+      d.x += vx * k; d.y += vy * k;
+      if (d.y > d.land) {
+        if (splashes.length < 260 && Math.random() < 0.6) splashes.push({ x: d.x, y: d.land, z: d.z, life: 1 });
+        Object.assign(d, newDrop(false));
+        continue;
+      }
+      const len = (8 + 16 * d.z) * S * (1 - drizzleMix * 0.5);
+      const m = len / Math.hypot(vx, vy);
+      ctx.moveTo(d.x, d.y);
+      ctx.lineTo(d.x - vx * m, d.y - vy * m);
+    }
+    ctx.stroke();
+    // splashes
+    ctx.lineWidth = 0.8;
+    ctx.strokeStyle = rgb(col, 0.45 * (1 - cur.night * 0.4));
+    ctx.beginPath();
+    for (let i = splashes.length - 1; i >= 0; i--) {
+      const s = splashes[i];
+      s.life -= 0.09 * k;
+      if (s.life <= 0) { splashes.splice(i, 1); continue; }
+      const r = (1 - s.life) * 5 * s.z * S;
+      ctx.moveTo(s.x + r, s.y);
+      ctx.ellipse(s.x, s.y, r, r * 0.3, 0, 0, TAU);
+    }
+    ctx.stroke();
+  }
+
+  function drawSnow(t, k) {
+    const active = Math.floor(flakes.length * clamp(cur.snow, 0, 1));
+    if (active < 1) return;
+    const a = 0.9 - cur.night * 0.3;
+    ctx.fillStyle = `rgba(255,255,255,${a})`;
+    ctx.beginPath();
+    for (let i = 0; i < active; i++) {
+      const f = flakes[i];
+      f.y += (0.5 + 1.8 * f.z) * k;
+      f.x += (cur.wind * 3.5 * (0.4 + f.z) + Math.sin(t * 1.2 + f.ph) * 0.5) * k;
+      if (f.y > H + 6) { f.y = rand(-40, -5); f.x = rand(-W * 0.2, W); }
+      if (f.x > W + 10) f.x = -10;
+      const r = (0.7 + 2.8 * f.z) * S;
+      ctx.moveTo(f.x + r, f.y);
+      ctx.arc(f.x, f.y, r, 0, TAU);
+    }
+    ctx.fill();
+  }
+
+  function drawLeaves(t, k, L) {
+    const want = clamp((cur.wind - 0.45) * 2.2, 0, 1) * (1 - clamp(cur.rain + cur.snow, 0, 1));
+    const active = Math.floor(leaves.length * want);
+    if (active < 1) return;
+    const tint = lerp3(hex('#1d252d'), hex('#040a1c'), cur.night);
+    for (let i = 0; i < active; i++) {
+      const l = leaves[i];
+      l.x += (3 + cur.wind * 6) * l.z * k;
+      l.y += (Math.sin(t * 2 + l.ph) * 1.2 + 0.3) * k;
+      l.rot += l.vr * k * 2;
+      if (l.x > W + 30 || l.y > H + 20) Object.assign(l, newLeaf(false));
+      ctx.save();
+      ctx.translate(l.x, l.y);
+      ctx.rotate(l.rot);
+      ctx.scale(1, Math.abs(Math.sin(t * 3 + l.ph)) * 0.8 + 0.2);
+      ctx.fillStyle = rgb(lerp3(hex(l.col), tint, clamp(1 - L, 0, 0.85)));
+      ctx.beginPath(); ctx.ellipse(0, 0, 5 * l.z * S, 2.6 * l.z * S, 0, 0, TAU); ctx.fill();
+      ctx.restore();
+    }
+  }
+
+  function updateLightning(dt) {
+    if (cur.storm > 0.4) {
+      lightning.timer -= dt;
+      if (lightning.timer <= 0) {
+        lightning.flash = 1;
+        lightning.second = Math.random() < 0.6 ? 0.12 : 0;
+        lightning.timer = rand(2.5, 8) / cur.storm;
+        if (Math.random() < 0.65) {
+          const pts = [];
+          let x = rand(W * 0.2, W * 0.95), y = H * rand(0.08, 0.2);
+          const end = H * rand(0.5, 0.62);
+          pts.push([x, y]);
+          while (y < end) { y += rand(12, 30) * S; x += rand(-18, 18) * S; pts.push([x, y]); }
+          const branch = [];
+          const bi = Math.floor(pts.length * rand(0.3, 0.6));
+          let [bx, by] = pts[bi];
+          const dir = Math.random() < 0.5 ? -1 : 1;
+          for (let j = 0; j < 5; j++) { bx += dir * rand(8, 20) * S; by += rand(10, 22) * S; branch.push([bx, by]); }
+          lightning.bolt = { pts, branch: [pts[bi], ...branch], life: 1 };
+        }
+      }
+    }
+    if (lightning.second > 0) {
+      lightning.second -= dt;
+      if (lightning.second <= 0) lightning.flash = Math.max(lightning.flash, 0.8);
+    }
+    lightning.flash = Math.max(0, lightning.flash - dt * 3.2);
+    if (lightning.bolt) { lightning.bolt.life -= dt * 3.5; if (lightning.bolt.life <= 0) lightning.bolt = null; }
+  }
+
+  function drawBolt() {
+    const b = lightning.bolt;
+    if (!b) return;
+    const a = clamp(b.life, 0, 1);
+    for (const [w, c] of [[8 * S, `rgba(170,190,255,${0.25 * a})`], [3 * S, `rgba(220,230,255,${0.6 * a})`], [1.2 * S, `rgba(255,255,255,${a})`]]) {
+      ctx.strokeStyle = c; ctx.lineWidth = w; ctx.lineJoin = 'round';
+      for (const line of [b.pts, b.branch]) {
+        ctx.beginPath();
+        line.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+        ctx.stroke();
+      }
+    }
+  }
+
+  /* =========================================================
+     Main loop
+     ========================================================= */
+  let last = null, darkClass = null;
+  function frame(now) {
+    const dt = last == null ? 0.016 : Math.min(0.1, (now - last) / 1000);
+    last = now;
+    const t = now / 1000;
+    const k = reduceMotion ? 0 : dt * 60;
+
+    // ease every scene value toward its target (about 3 seconds)
+    const ease = Math.min(1, dt * 0.9);
+    for (const key in cur) {
+      if (tgt[key] === undefined) continue;
+      const rate = key === 'cover' ? dt * 0.25 : ease;
+      cur[key] += (tgt[key] - cur[key]) * Math.min(1, rate);
+      if (Math.abs(tgt[key] - cur[key]) < 0.001) cur[key] = tgt[key];
+    }
+
+    if (!reduceMotion) updateLightning(dt);
+    drawSky(t);
+    drawClouds(k);
+    drawBolt();
+    const L = drawLand(t);
+    drawSmoke(k, L);
+    drawGrass(t, L);
+    drawFog(k);
+    drawLeaves(t, k, L);
+    drawSnow(t, k);
+    drawRain(k);
+
+    if (lightning.flash > 0.01) {
+      ctx.fillStyle = `rgba(225,232,255,${lightning.flash * 0.4})`;
+      ctx.fillRect(0, 0, W, H);
+    }
+    const vg = ctx.createRadialGradient(W / 2, H * 0.45, Math.min(W, H) * 0.35, W / 2, H * 0.45, Math.max(W, H) * 0.85);
+    vg.addColorStop(0, 'rgba(0,0,0,0)');
+    vg.addColorStop(1, `rgba(0,0,0,${0.15 + 0.2 * (1 - L)})`);
+    ctx.fillStyle = vg;
+    ctx.fillRect(0, 0, W, H);
+
+    const dark = L < 0.5;
+    if (dark !== darkClass) { document.body.classList.toggle('dark', dark); darkClass = dark; }
+    requestAnimationFrame(frame);
+  }
+
+  /* =========================================================
+     Weather data and controls
+     ========================================================= */
+  const $ = id => document.getElementById(id);
+  const pill = $('wxPill'), panel = $('wxPanel'), input = $('cityInput'), results = $('results');
+  const detailsEl = $('wxDetails'), statusEl = $('wxStatus'), previewSel = $('previewSel'), previewNight = $('previewNight');
+  let place = null, live = null, preview = null;
+
+  function store(key, val) { try { localStorage.setItem(key, JSON.stringify(val)); } catch (e) {} }
+  function load(key) { try { return JSON.parse(localStorage.getItem(key)); } catch (e) { return null; } }
+
+  async function getJSON(url) {
+    const ac = new AbortController();
+    const timer = setTimeout(() => ac.abort(), 10000);
+    try {
+      const r = await fetch(url, { signal: ac.signal });
+      if (!r.ok) throw new Error('HTTP ' + r.status);
+      return await r.json();
+    } finally { clearTimeout(timer); }
+  }
+
+  async function geocode(name, count = 5) {
+    const url = `https://geocoding-api.open-meteo.com/v1/search?name=${encodeURIComponent(name)}&count=${count}&language=en&format=json`;
+    const j = await getJSON(url);
+    return (j.results || []).map(r => ({
+      name: r.name, region: [r.admin1, r.country].filter(Boolean).join(', '),
+      lat: r.latitude, lon: r.longitude
+    }));
+  }
+
+  function render() {
+    let kind, label, night, temp = null;
+    if (preview) {
+      const d = describe(PRESETS[preview].code);
+      kind = d.kind; label = d.label + ' (preview)'; night = previewNight.checked;
+    } else if (live) {
+      const d = describe(live.code);
+      kind = d.kind; label = d.label; night = !live.isDay; temp = live.temp;
+    } else {
+      kind = 'clear'; label = ''; night = cur.night > 0.5;
+    }
+    if (preview === 'windy') label = 'Windy (preview)';
+    $('wxIcon').innerHTML = iconSVG(kind, night);
+    $('wxPlace').textContent = place ? place.name : 'Choose a place';
+    $('wxTemp').textContent = temp == null ? '' : `${Math.round(temp)}°C`;
+    pill.setAttribute('aria-label', `Weather: ${place ? place.name : 'no place'}${label ? ', ' + label : ''}${temp == null ? '' : ', ' + Math.round(temp) + ' degrees'}. Change location`);
+    if (live && !preview) {
+      const when = new Date(live.fetched).toLocaleTimeString([], { hour: 'numeric', minute: '2-digit' });
+      detailsEl.textContent = `${label} · Wind ${Math.round(live.wind)} km/h · Updated ${when}`;
+    } else if (preview) {
+      detailsEl.textContent = `Showing ${label.toLowerCase()}. Choose "Live weather" to go back.`;
+    } else {
+      detailsEl.textContent = '';
+    }
+  }
+
+  function applyScene() {
+    if (preview) {
+      const p = PRESETS[preview];
+      setTargets(sceneFor(p.code, !previewNight.checked, p.wind));
+    } else if (live) {
+      setTargets(sceneFor(live.code, live.isDay, live.wind));
+    }
+    render();
+  }
+
+  async function loadWeather() {
+    if (!place) return;
+    statusEl.textContent = 'Getting the weather…';
+    try {
+      const url = `https://api.open-meteo.com/v1/forecast?latitude=${place.lat}&longitude=${place.lon}` +
+        '&current=temperature_2m,weather_code,is_day,wind_speed_10m&timezone=auto';
+      const j = await getJSON(url);
+      const c = j.current;
+      live = { code: c.weather_code, isDay: c.is_day === 1, temp: c.temperature_2m, wind: c.wind_speed_10m, fetched: Date.now() };
+      statusEl.textContent = '';
+    } catch (e) {
+      statusEl.textContent = live ? 'Couldn’t refresh. Showing the last weather.' : 'Couldn’t get the weather right now. Showing a default scene.';
+      if (!live && !preview) {
+        const hr = new Date().getHours();
+        setTargets(sceneFor(1, hr >= 6 && hr < 18, 8));
+      }
+    }
+    applyScene();
+  }
+
+  function choosePlace(p) {
+    place = p;
+    store('wx-place', p);
+    results.innerHTML = '';
+    input.value = '';
+    render();
+    loadWeather();
+  }
+
+  // search box
+  let searchTimer = null, lastQuery = '';
+  input.addEventListener('input', () => {
+    clearTimeout(searchTimer);
+    const q = input.value.trim();
+    if (q.length < 2) { results.innerHTML = ''; return; }
+    searchTimer = setTimeout(async () => {
+      lastQuery = q;
+      try {
+        const list = await geocode(q);
+        if (q !== lastQuery) return;
+        results.innerHTML = '';
+        if (!list.length) { results.innerHTML = '<li style="padding:6px 8px;opacity:.7">No places found</li>'; return; }
+        for (const p of list) {
+          const li = document.createElement('li');
+          const b = document.createElement('button');
+          b.type = 'button';
+          b.innerHTML = '<span></span> <small></small>';
+          b.firstChild.textContent = p.name;
+          b.lastChild.textContent = p.region;
+          b.addEventListener('click', () => choosePlace(p));
+          li.appendChild(b);
+          results.appendChild(li);
+        }
+      } catch (e) {
+        results.innerHTML = '<li style="padding:6px 8px;opacity:.7">Search is unavailable right now</li>';
+      }
+    }, 300);
+  });
+  $('searchForm').addEventListener('submit', async e => {
+    e.preventDefault();
+    const q = input.value.trim();
+    if (!q) return;
+    try {
+      const list = await geocode(q, 1);
+      if (list.length) choosePlace(list[0]);
+      else statusEl.textContent = 'No places found.';
+    } catch (err) { statusEl.textContent = 'Search is unavailable right now.'; }
+  });
+
+  // use my location
+  $('locBtn').addEventListener('click', () => {
+    if (!navigator.geolocation) { statusEl.textContent = 'This browser can’t share your location.'; return; }
+    statusEl.textContent = 'Finding your location…';
+    navigator.geolocation.getCurrentPosition(
+      pos => choosePlace({ name: 'My location', region: '', lat: +pos.coords.latitude.toFixed(3), lon: +pos.coords.longitude.toFixed(3) }),
+      () => { statusEl.textContent = 'Location permission was not given.'; },
+      { timeout: 10000, maximumAge: 600000 }
+    );
+  });
+
+  // open / close panel
+  pill.addEventListener('click', () => {
+    const open = panel.hidden;
+    panel.hidden = !open;
+    pill.setAttribute('aria-expanded', String(open));
+    if (open) setTimeout(() => input.focus(), 0);
+  });
+  document.addEventListener('keydown', e => {
+    if (e.key === 'Escape' && !panel.hidden) { panel.hidden = true; pill.setAttribute('aria-expanded', 'false'); pill.focus(); }
+  });
+  document.addEventListener('click', e => {
+    if (!panel.hidden && !$('wx').contains(e.target)) { panel.hidden = true; pill.setAttribute('aria-expanded', 'false'); }
+  });
+
+  // preview controls
+  previewSel.addEventListener('change', () => { preview = previewSel.value || null; applyScene(); });
+  previewNight.addEventListener('change', () => { if (preview) applyScene(); });
+
+  // a link like page.html#storm or page.html#snow,night opens straight into a preview
+  function readHash() {
+    const parts = location.hash.replace('#', '').toLowerCase().split(/[,&+ ]/).filter(Boolean);
+    const p = parts.find(x => PRESETS[x]);
+    if (p) {
+      preview = p;
+      previewSel.value = p;
+      previewNight.checked = parts.includes('night');
+      return true;
+    }
+    return false;
+  }
+  window.addEventListener('hashchange', () => { if (readHash()) applyScene(); });
+
+  async function defaultPlace() {
+    const saved = load('wx-place');
+    if (saved && typeof saved.lat === 'number') return saved;
+    // start with the city of the viewer's own time zone, e.g. Asia/Kolkata -> Kolkata
+    let city = 'London';
+    try {
+      const tz = Intl.DateTimeFormat().resolvedOptions().timeZone || '';
+      const last = tz.split('/').pop().replace(/_/g, ' ');
+      const fix = { Calcutta: 'Kolkata', Saigon: 'Ho Chi Minh City', Kiev: 'Kyiv', Rangoon: 'Yangon', Katmandu: 'Kathmandu' };
+      if (last && !/^(UTC|GMT)/i.test(last)) city = fix[last] || last;
+    } catch (e) {}
+    try {
+      const list = await geocode(city, 1);
+      if (list.length) return list[0];
+    } catch (e) {}
+    return { name: 'London', region: 'England, United Kingdom', lat: 51.5085, lon: -0.1257 };
+  }
+
+  /* =========================================================
+     Start
+     ========================================================= */
+  let rt;
+  window.addEventListener('resize', () => { clearTimeout(rt); rt = setTimeout(resize, 150); });
+  resize();
+  const fromHash = readHash();
+  if (fromHash) applyScene();
+  render();
+  requestAnimationFrame(frame);
+
+  (async () => {
+    place = await defaultPlace();
+    render();
+    await loadWeather();
+  })();
+  setInterval(loadWeather, 20 * 60 * 1000);   // refresh every 20 minutes
+})();
+</script>
+</body>
+</html>

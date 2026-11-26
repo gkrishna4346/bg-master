@@ -1,0 +1,793 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Underwater Seahorses</title>
+<style>
+  * { margin: 0; padding: 0; box-sizing: border-box; }
+  html, body { height: 100%; }
+  body {
+    font-family: Georgia, "Times New Roman", serif;
+    background: #0a3d5c;
+    overflow-x: hidden;
+    color: #eafaff;
+  }
+  #ocean {
+    position: fixed;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    z-index: 0;
+    pointer-events: none;
+  }
+  /* Your page content goes here, above the ocean */
+  main {
+    position: relative;
+    z-index: 1;
+    min-height: 100vh;
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    justify-content: flex-start;
+    text-align: center;
+    padding: 12vh 16px 24px;
+  }
+  h1 {
+    font-size: clamp(2.4rem, 7vw, 5rem);
+    font-weight: normal;
+    letter-spacing: 0.05em;
+    text-shadow: 0 2px 18px rgba(0, 40, 70, 0.8);
+  }
+  p {
+    margin-top: 12px;
+    font-size: clamp(1rem, 2.5vw, 1.3rem);
+    opacity: 0.85;
+    text-shadow: 0 1px 10px rgba(0, 40, 70, 0.8);
+  }
+</style>
+</head>
+<body>
+<canvas id="ocean"></canvas>
+
+<main>
+  <h1>Under the Sea</h1>
+  <p>Replace this with your own content.</p>
+</main>
+
+<script>
+(() => {
+  const canvas = document.getElementById('ocean');
+  const ctx = canvas.getContext('2d');
+  const rand = (a, b) => a + Math.random() * (b - a);
+  const pick = arr => arr[Math.floor(Math.random() * arr.length)];
+  let W = 0, H = 0, dpr = 1, sizeScale = 1;
+
+  /* =========================================================
+     SEAHORSE  (natural colors, bony rings, long snout)
+     ========================================================= */
+  const HORSE_COLORS = [
+    { light: '#F7D774', base: '#D9A428', dark: '#7A5410' }, // golden yellow
+    { light: '#F5A25D', base: '#D2691E', dark: '#6E2F0C' }, // orange
+    { light: '#D8B98A', base: '#A07850', dark: '#4A3420' }, // tan / brown
+    { light: '#E58A73', base: '#B24A3A', dark: '#5A1E18' }, // reddish
+    { light: '#B7B97E', base: '#7A7C45', dark: '#33351A' }  // olive
+  ];
+
+  // Spine of head-neck-trunk (x, y, half-width), facing right, ~130 units tall
+  const CTRL = [[2,-50,8],[-4,-38,6],[0,-24,8.5],[7,-8,11],[8,8,11],[3,22,8.5],[-3,33,6],[-6,46,4.5]];
+  const cr = (a, b, c, d, t) => {
+    const t2 = t * t, t3 = t2 * t;
+    return 0.5 * (2 * b + (-a + c) * t + (2 * a - 5 * b + 4 * c - d) * t2 + (-a + 3 * b - 3 * c + d) * t3);
+  };
+  const BODY = [];
+  for (let i = 0; i < CTRL.length - 1; i++) {
+    const p0 = CTRL[Math.max(i - 1, 0)], p1 = CTRL[i], p2 = CTRL[i + 1], p3 = CTRL[Math.min(i + 2, CTRL.length - 1)];
+    for (let k = 0; k < 8; k++) {
+      const t = k / 8;
+      BODY.push({ x: cr(p0[0], p1[0], p2[0], p3[0], t), y: cr(p0[1], p1[1], p2[1], p3[1], t), w: p1[2] + (p2[2] - p1[2]) * t });
+    }
+  }
+  BODY.push({ x: -6, y: 46, w: 4.5 });
+
+  // Prehensile tail: a tightening spiral that curls forward
+  const T_CX = 1, T_CY = 53;
+  const T_A0 = Math.atan2(46 - T_CY, -6 - T_CX), T_R0 = Math.hypot(7, 7);
+  function tailPoints(curl) {
+    const out = [];
+    for (let k = 1; k <= 34; k++) {
+      const u = k / 34, a = T_A0 - curl * u, r = T_R0 * (1 - 0.78 * u);
+      out.push({ x: T_CX + Math.cos(a) * r, y: T_CY + Math.sin(a) * r, w: 4.5 * (1 - u) * 0.85 + 0.9 });
+    }
+    return out;
+  }
+
+  // Skull profile (the snout is drawn separately as a 3D tube)
+  const SKULL = [[-6,-46],[-7,-54],[-3,-60],[2,-62],[6,-60],[10,-56],[14,-52],[15,-48],[14,-44],[8,-40],[3,-36],[-2,-38]];
+  const CROWN = [[-2,-60],[-1,-66],[0.5,-61],[2,-67],[3.5,-61.5],[5,-65],[6,-60.5]];
+  const BROW_SPINE = [[8,-58],[10,-61],[11,-57]];
+  const CHEEK_SPINE = [[-6,-50],[-10,-52],[-6.5,-47]];
+
+  function makeHorse(i) {
+    const depth = Math.random();
+    const blobs = [];
+    for (let k = 0; k < 22; k++) blobs.push({ x: rand(-14, 34), y: rand(-64, 40), r: rand(1.5, 4.5), light: Math.random() < 0.35 });
+    const freckles = [];
+    for (let k = 0; k < 40; k++) freckles.push({ x: rand(-14, 36), y: rand(-64, 44), r: rand(0.35, 0.9) });
+    const h = {
+      x: rand(80, W - 80), y: rand(H * 0.25, H * 0.68),
+      vx: 0, vy: 0, tx: 0, ty: 0, wait: 0,
+      depth,
+      s: (0.8 + depth * 0.7) * sizeScale,
+      speed: 0.18 + depth * 0.22,                 // seahorses are slow swimmers
+      theta: Math.random() < 0.5 ? 0 : Math.PI, thetaTarget: 0, tilt: 0,
+      phase: rand(0, Math.PI * 2),
+      color: HORSE_COLORS[i % HORSE_COLORS.length],
+      blobs, freckles
+    };
+    h.thetaTarget = h.theta;
+    pickTarget(h);
+    return h;
+  }
+  function pickTarget(h) {
+    // mostly short hops, often more vertical than horizontal
+    h.tx = Math.max(70, Math.min(W - 70, h.x + rand(-260, 260)));
+    h.ty = Math.max(H * 0.2, Math.min(H * 0.72, h.y + rand(-160, 160)));
+  }
+
+  function shadePath(path, c, h, sg, kx) {
+    const g = ctx.createLinearGradient(-16 * sg, -30, 22 * sg, 20);
+    g.addColorStop(0, c.dark);
+    g.addColorStop(0.5, c.base);
+    g.addColorStop(1, c.light);
+    ctx.fillStyle = g;
+    ctx.fill(path);
+
+    ctx.save();
+    ctx.clip(path);
+    for (const b of h.blobs) {
+      ctx.fillStyle = b.light ? 'rgba(255,240,210,0.16)' : 'rgba(20,10,0,0.18)';
+      ctx.beginPath(); ctx.arc(b.x * kx, b.y, b.r, 0, Math.PI * 2); ctx.fill();
+    }
+    ctx.fillStyle = 'rgba(255,250,235,0.55)';
+    for (const f of h.freckles) { ctx.beginPath(); ctx.arc(f.x * kx, f.y, f.r, 0, Math.PI * 2); ctx.fill(); }
+    const hl = ctx.createRadialGradient(10 * sg, -30, 2, 10 * sg, -30, 45);
+    hl.addColorStop(0, 'rgba(255,255,240,0.22)');
+    hl.addColorStop(1, 'rgba(255,255,240,0)');
+    ctx.fillStyle = hl; ctx.fillRect(-50, -70, 100, 140);
+    // darker back edge (and darker sides when seen from the front)
+    const back = ctx.createLinearGradient(-14 * sg, 0, 2 * sg, 0);
+    back.addColorStop(0, 'rgba(0,0,0,0.3)');
+    back.addColorStop(1, 'rgba(0,0,0,0)');
+    ctx.fillStyle = back; ctx.fillRect(-50, -70, 100, 140);
+    ctx.restore();
+
+    ctx.strokeStyle = 'rgba(20,10,0,0.45)';
+    ctx.lineWidth = 0.8;
+    ctx.stroke(path);
+  }
+
+  /* The seahorse is drawn as a simple 3D model rotated around its vertical axis.
+     theta = 0 faces right, theta = PI faces left; halfway it looks at the viewer. */
+  function drawSeahorse(h, t) {
+    const c = h.color, th = h.theta;
+    const co = Math.cos(th), si = Math.sin(th);
+    const sg = co >= 0 ? 1 : -1;
+    const wf = Math.sqrt(co * co + 0.42 * si * si);   // body is round-ish, never paper thin
+    const kx = sg * wf;                                // horizontal factor for the skull
+    const HX = 3;                                      // skull center
+    const hx = x => HX * co + (x - HX) * kx;           // skull point -> screen x
+
+    const curl = 5.0 + Math.sin(t * 0.9 + h.phase) * 0.6;
+    const raw = BODY.concat(tailPoints(curl));
+    const pts = raw.map(p => ({ x: p.x * co, y: p.y, w: p.w * wf }));
+
+    const L = [], R = [], T = [];
+    for (let i = 0; i < pts.length; i++) {
+      const a = pts[Math.max(i - 1, 0)], b = pts[Math.min(i + 1, pts.length - 1)];
+      const tx = b.x - a.x, ty = b.y - a.y, len = Math.hypot(tx, ty) || 1;
+      const nx = -ty / len, ny = tx / len, p = pts[i];
+      T.push([tx / len, ty / len]);
+      L.push([p.x + nx * p.w, p.y + ny * p.w]);
+      R.push([p.x - nx * p.w, p.y - ny * p.w]);
+    }
+    const bodyPath = new Path2D();
+    bodyPath.moveTo(L[0][0], L[0][1]);
+    for (const p of L) bodyPath.lineTo(p[0], p[1]);
+    for (let i = R.length - 1; i >= 0; i--) bodyPath.lineTo(R[i][0], R[i][1]);
+    bodyPath.closePath();
+
+    const skullPath = new Path2D();
+    SKULL.forEach(([x, y], i) => i ? skullPath.lineTo(hx(x), y) : skullPath.moveTo(hx(x), y));
+    skullPath.closePath();
+
+    ctx.save();
+    ctx.translate(h.x, h.y);
+    ctx.scale(h.s, h.s);
+    ctx.rotate(h.tilt * co);
+    ctx.globalAlpha = 0.72 + h.depth * 0.28;
+
+    // dorsal fin on the back midline (thin, so it narrows to an edge when facing us)
+    const base = [], outer = [];
+    for (let k = 0; k <= 10; k++) {
+      const v = k / 10;
+      const bx = -3 + (-6 + 3) * v, by = 4 + 22 * v;
+      const reach = 10 * Math.pow(Math.sin(Math.PI * (0.08 + v * 0.84)), 0.7);
+      const ripple = Math.sin(t * 26 - k * 1.1 + h.phase) * 1.6;
+      base.push([bx * co, by]);
+      outer.push([(bx - reach) * co + ripple * Math.max(0.3, Math.abs(co)) * sg, by - 2]);
+    }
+    ctx.fillStyle = 'rgba(235,245,255,0.22)';
+    ctx.beginPath();
+    base.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+    for (let k = outer.length - 1; k >= 0; k--) ctx.lineTo(outer[k][0], outer[k][1]);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.35)';
+    ctx.lineWidth = 0.4;
+    for (let k = 0; k <= 10; k++) {
+      ctx.beginPath(); ctx.moveTo(base[k][0], base[k][1]); ctx.lineTo(outer[k][0], outer[k][1]); ctx.stroke();
+    }
+
+    shadePath(bodyPath, c, h, sg, kx);
+
+    // bony rings and ridge knobs
+    for (let i = 12; i < pts.length - 2; i += (i < BODY.length ? 4 : 2)) {
+      const p = pts[i], tg = T[i], bulge = p.w * 0.35;
+      ctx.strokeStyle = 'rgba(20,10,0,0.32)';
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      ctx.moveTo(L[i][0], L[i][1]);
+      ctx.quadraticCurveTo(p.x + tg[0] * bulge, p.y + tg[1] * bulge, R[i][0], R[i][1]);
+      ctx.stroke();
+      ctx.strokeStyle = 'rgba(255,245,220,0.18)';
+      ctx.beginPath();
+      ctx.moveTo(L[i][0] + tg[0] * 0.8, L[i][1] + tg[1] * 0.8);
+      ctx.quadraticCurveTo(p.x + tg[0] * (bulge + 0.8), p.y + tg[1] * (bulge + 0.8), R[i][0] + tg[0] * 0.8, R[i][1] + tg[1] * 0.8);
+      ctx.stroke();
+      const kr = 0.6 + raw[i].w * 0.09;
+      ctx.fillStyle = c.dark;
+      ctx.beginPath(); ctx.arc(L[i][0], L[i][1], kr * 1.15, 0, Math.PI * 2); ctx.fill();
+      ctx.beginPath(); ctx.arc(R[i][0], R[i][1], kr * 1.15, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,240,210,0.45)';
+      ctx.beginPath(); ctx.arc(L[i][0], L[i][1] - kr * 0.3, kr * 0.45, 0, Math.PI * 2); ctx.fill();
+    }
+
+    const drawSnout = () => {
+    // snout: a tube that foreshortens when it points toward you
+    const sx0 = 9 * co, sy0 = -48.5, sx1 = 36 * co, sy1 = -47.5;
+    const slen = Math.hypot(sx1 - sx0, sy1 - sy0);
+    ctx.lineCap = 'round';
+    ctx.strokeStyle = 'rgba(20,10,0,0.42)';
+    ctx.lineWidth = 5.8;
+    ctx.beginPath(); ctx.moveTo(sx0, sy0); ctx.lineTo(sx1, sy1); ctx.stroke();
+    const sgr = ctx.createLinearGradient(0, -51, 0, -44.5);
+    sgr.addColorStop(0, c.dark); sgr.addColorStop(0.6, c.base); sgr.addColorStop(1, c.light);
+    ctx.strokeStyle = sgr;
+    ctx.lineWidth = 4.8;
+    ctx.beginPath(); ctx.moveTo(sx0, sy0); ctx.lineTo(sx1, sy1); ctx.stroke();
+    // snout bands
+    if (slen > 8) {
+      ctx.strokeStyle = 'rgba(20,10,0,0.25)';
+      ctx.lineWidth = 0.6;
+      for (const u of [0.3, 0.5, 0.7, 0.88]) {
+        const bx = sx0 + (sx1 - sx0) * u, by = sy0 + (sy1 - sy0) * u;
+        ctx.beginPath(); ctx.moveTo(bx, by - 2.4); ctx.lineTo(bx - 0.3 * sg, by + 2.4); ctx.stroke();
+      }
+    }
+    // mouth opening, visible when the snout points at the viewer
+    if (si > 0.55) {
+      ctx.fillStyle = `rgba(30,12,5,${(si - 0.55) * 1.8})`;
+      ctx.beginPath(); ctx.ellipse(sx1, sy1, 1.6, 1.3, 0, 0, Math.PI * 2); ctx.fill();
+    }
+
+    };
+    const snoutInFront = si > 0.6;
+    if (!snoutInFront) drawSnout();
+
+    // skull
+    shadePath(skullPath, c, h, sg, kx);
+
+    // crown and small spines
+    ctx.fillStyle = c.dark;
+    ctx.beginPath();
+    CROWN.forEach(([x, y], i) => i ? ctx.lineTo(hx(x), y) : ctx.moveTo(hx(x), y));
+    ctx.closePath(); ctx.fill();
+    for (const sp of [BROW_SPINE, CHEEK_SPINE]) {
+      ctx.beginPath();
+      sp.forEach(([x, y], i) => i ? ctx.lineTo(hx(x), y) : ctx.moveTo(hx(x), y));
+      ctx.fill();
+    }
+
+    // gill cover (only visible from the side)
+    if (Math.abs(co) > 0.35) {
+      ctx.strokeStyle = `rgba(20,10,0,${0.35 * Math.min(1, (Math.abs(co) - 0.35) * 2.5)})`;
+      ctx.lineWidth = 0.8;
+      ctx.beginPath();
+      if (sg > 0) ctx.ellipse(hx(1), -47, 6 * wf, 6, 0, -0.9, 1.3);
+      else ctx.ellipse(hx(1), -47, 6 * wf, 6, 0, Math.PI - 1.3, Math.PI + 0.9);
+      ctx.stroke();
+    }
+
+    // eyes: one on each side of the head; both show when it looks at you
+    for (const zs of [1, -1]) {
+      const vis = zs * co + 0.45 * si;
+      if (vis < 0.12) continue;
+      const ex = 7 * co - zs * 4.6 * si;
+      const fx = Math.max(0.4, Math.min(1, vis));
+      const look = 0.3 * co;                    // pupil drifts toward the snout
+      ctx.fillStyle = c.dark;
+      ctx.beginPath(); ctx.ellipse(ex, -53, 3.2 * fx, 3.2, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#C9A23A';
+      ctx.beginPath(); ctx.ellipse(ex, -53, 2.4 * fx, 2.4, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = '#0d0d12';
+      ctx.beginPath(); ctx.ellipse(ex + look, -53, 1.4 * fx, 1.4, 0, 0, Math.PI * 2); ctx.fill();
+      ctx.fillStyle = 'rgba(255,255,255,0.85)';
+      ctx.beginPath(); ctx.arc(ex + 0.6 * fx, -53.8, 0.5, 0, Math.PI * 2); ctx.fill();
+    }
+
+    if (snoutInFront) drawSnout();
+
+    // pectoral fin on the visible side
+    ctx.save();
+    ctx.translate(-1 * co - sg * 4 * si, -43);
+    ctx.scale(kx, 1);
+    ctx.rotate(-0.4 + Math.sin(t * 22 + h.phase) * 0.35);
+    ctx.fillStyle = 'rgba(235,245,255,0.28)';
+    ctx.beginPath(); ctx.ellipse(-4, 0, 5, 2.6, 0, 0, Math.PI * 2); ctx.fill();
+    ctx.strokeStyle = 'rgba(255,255,255,0.3)'; ctx.lineWidth = 0.3;
+    for (let k = -2; k <= 2; k++) { ctx.beginPath(); ctx.moveTo(0, 0); ctx.lineTo(-8.5, k * 1.1); ctx.stroke(); }
+    ctx.restore();
+
+    ctx.restore();
+  }
+
+  function updateHorse(h, t) {
+    if (h.wait > 0) {
+      h.wait--;
+      h.vx *= 0.97; h.vy *= 0.97;
+    } else {
+      const dx = h.tx - h.x, dy = h.ty - h.y, dist = Math.hypot(dx, dy);
+      if (dist < 20) {
+        h.wait = Math.floor(rand(90, 360));   // hover in place for a while
+        pickTarget(h);
+      } else {
+        h.vx += ((dx / dist) * h.speed - h.vx) * 0.015;
+        h.vy += ((dy / dist) * h.speed - h.vy) * 0.015;
+      }
+    }
+    h.x += h.vx;
+    h.y += h.vy + Math.sin(t * 1.3 + h.phase) * 0.12;
+
+    if (h.vx > 0.05) h.thetaTarget = 0;
+    else if (h.vx < -0.05) h.thetaTarget = Math.PI;
+    // turn around the vertical axis at a steady, eased pace (passes through facing the viewer)
+    const dTh = h.thetaTarget - h.theta;
+    h.theta += Math.sign(dTh) * Math.min(Math.abs(dTh), 0.008 + Math.abs(dTh) * 0.025);
+    const lean = Math.min(0.18, Math.abs(h.vx) * 0.45);
+    h.tilt += (lean + Math.sin(t * 0.8 + h.phase) * 0.03 - h.tilt) * 0.04;
+
+    if (Math.random() < 0.003) bubbles.push(makeBubble(h.x + Math.cos(h.theta) * h.s * 36, h.y - h.s * 48, true));
+  }
+
+  /* =========================================================
+     PLANTS: giant kelp, seagrass clumps, sea fans
+     ========================================================= */
+  let farKelp = [], midKelp = [], grassBack = [], grassFront = [], fans = [], rocks = [], sand = [];
+  let horses = [], rays = [], bubbles = [], specks = [];
+
+  const bedY = x => H - 38 - Math.sin(x * 0.006) * 12 - Math.sin(x * 0.017) * 5;
+  let current = 0;
+
+  function makeKelp(far) {
+    const x = rand(-30, W + 30);
+    const h = far ? rand(H * 0.6, H * 1.0) : rand(H * 0.5, H * 0.85);
+    const blades = [];
+    let side = Math.random() < 0.5 ? 1 : -1;
+    for (let f = rand(0.1, 0.18); f < 0.97; f += rand(0.07, 0.11)) {
+      const len = rand(45, 85) * (far ? 0.8 : 1) * sizeScale;
+      blades.push({ f, side, len, wid: len * rand(0.09, 0.13), spread: rand(0.45, 0.95), ph: rand(0, 6) });
+      side = -side;
+    }
+    for (let k = 0; k < 3; k++) {
+      const len = rand(55, 95) * (far ? 0.8 : 1) * sizeScale;
+      blades.push({ f: 1, side: k - 1, len, wid: len * 0.11, spread: 0.35, ph: rand(0, 6) });
+    }
+    return {
+      x, h, blades, far,
+      amp: rand(18, 34), speed: rand(0.35, 0.6), phase: rand(0, 6),
+      stipe: far ? '#22382f' : '#4a3f17',
+      c1: far ? '#2b4433' : '#5a4c14',
+      c2: far ? '#3e5a3c' : '#a68f2e',
+      width: (far ? 2.2 : 3.2) * sizeScale + 1
+    };
+  }
+
+  function kelpPoint(k, f, t) {
+    const sway = Math.sin(t * k.speed + k.phase - f * 1.8) * k.amp * Math.pow(f, 1.3) + current * k.h * 0.1 * f * f;
+    return { x: k.x + sway, y: bedY(k.x) + 6 - k.h * f };
+  }
+
+  function drawBlade(x, y, ang, len, wid, t, ph, c1, c2) {
+    ctx.save();
+    ctx.translate(x, y);
+    ctx.rotate(ang);
+    // gas bladder (pneumatocyst)
+    ctx.fillStyle = c2;
+    ctx.beginPath(); ctx.ellipse(0, -3, 2.2, 3.2, 0, 0, Math.PI * 2); ctx.fill();
+    const left = [], right = [], mid = [];
+    for (let j = 0; j <= 14; j++) {
+      const u = j / 14, yy = -(5 + len * u);
+      const bend = u * u * len * 0.22 * Math.sin(t * 0.9 + ph);
+      const half = wid * Math.pow(Math.sin(Math.PI * Math.min(1, 0.04 + u * 0.96)), 0.75) * (1 + 0.16 * Math.sin(u * 24 + t * 1.6 + ph));
+      left.push([bend - half, yy]); right.push([bend + half, yy]); mid.push([bend, yy]);
+    }
+    const g = ctx.createLinearGradient(0, -5, 0, -5 - len);
+    g.addColorStop(0, c1); g.addColorStop(1, c2);
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(0, -5);
+    for (const p of left) ctx.lineTo(p[0], p[1]);
+    for (let j = right.length - 1; j >= 0; j--) ctx.lineTo(right[j][0], right[j][1]);
+    ctx.closePath(); ctx.fill();
+    ctx.strokeStyle = 'rgba(0,0,0,0.18)'; ctx.lineWidth = 0.7;
+    ctx.beginPath(); mid.forEach(([mx, my], i) => i ? ctx.lineTo(mx, my) : ctx.moveTo(mx, my)); ctx.stroke();
+    ctx.restore();
+  }
+
+  function drawKelp(k, t) {
+    // stipe (stem)
+    ctx.strokeStyle = k.stipe;
+    ctx.lineWidth = k.width;
+    ctx.lineCap = 'round';
+    ctx.beginPath();
+    for (let j = 0; j <= 24; j++) {
+      const p = kelpPoint(k, j / 24, t);
+      j ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y);
+    }
+    ctx.stroke();
+    // holdfast
+    ctx.fillStyle = k.stipe;
+    ctx.beginPath(); ctx.ellipse(k.x, bedY(k.x) + 6, 9 * sizeScale + 3, 5, 0, Math.PI, 0); ctx.fill();
+    // blades streaming upward and with the current
+    for (const b of k.blades) {
+      const p = kelpPoint(k, b.f, t);
+      const ang = b.side * b.spread + current * 0.5 + Math.sin(t * 0.8 + b.ph) * 0.15;
+      drawBlade(p.x, p.y, ang, b.len, b.wid, t, b.ph, k.c1, k.c2);
+    }
+  }
+
+  const GRASS_NEAR = [['#1f5530', '#7fb04a'], ['#2a6530', '#a3c35a'], ['#1d5444', '#6fae7e'], ['#3c5a1a', '#b4c25a']];
+  const GRASS_FAR = [['#173f33', '#3f7a52'], ['#1b4535', '#4f8650'], ['#16383a', '#3e7266']];
+
+  function makeClump(front) {
+    const x = rand(-10, W + 10);
+    const blades = [];
+    const n = Math.floor(rand(5, 10));
+    const palette = front ? GRASS_NEAR : GRASS_FAR;
+    for (let i = 0; i < n; i++) {
+      const col = pick(palette);
+      blades.push({
+        dx: rand(-10, 10),
+        h: (front ? rand(H * 0.1, H * 0.24) : rand(H * 0.16, H * 0.34)),
+        w: rand(2.2, 4.2) * (0.6 + sizeScale * 0.4),
+        lean: rand(-0.5, 0.5),
+        amp: rand(10, 24),
+        speed: rand(0.7, 1.2),
+        phase: rand(0, 6),
+        c1: col[0], c2: col[1]
+      });
+    }
+    return { x, blades };
+  }
+
+  function drawClump(c, t) {
+    const by = bedY(c.x) + 8;
+    for (const b of c.blades) {
+      const left = [], right = [];
+      for (let j = 0; j <= 16; j++) {
+        const f = j / 16;
+        const bend = b.lean * f * f * b.h * 0.35 + Math.sin(t * b.speed + b.phase - f * 2.4) * b.amp * Math.pow(f, 1.6) + current * b.h * 0.12 * f * f;
+        const cx = c.x + b.dx + bend, cy = by - b.h * f;
+        // twisting ribbon: width changes as the blade turns
+        const tw = 0.45 + 0.55 * Math.abs(Math.cos(f * 3.2 + b.phase + t * 0.5));
+        const half = b.w * (1 - 0.3 * f) * tw * (j === 16 ? 0.2 : 1);
+        left.push([cx - half, cy]); right.push([cx + half, cy]);
+      }
+      const g = ctx.createLinearGradient(0, by, 0, by - b.h);
+      g.addColorStop(0, b.c1); g.addColorStop(1, b.c2);
+      ctx.fillStyle = g;
+      ctx.beginPath();
+      left.forEach(([x, y], i) => i ? ctx.lineTo(x, y) : ctx.moveTo(x, y));
+      for (let j = right.length - 1; j >= 0; j--) ctx.lineTo(right[j][0], right[j][1]);
+      ctx.closePath(); ctx.fill();
+      ctx.strokeStyle = 'rgba(255,255,220,0.08)'; ctx.lineWidth = 0.6; ctx.stroke();
+    }
+  }
+
+  function makeFan() {
+    const segs = [];
+    const size = rand(110, 180) * sizeScale;
+    (function grow(x, y, a, len, d) {
+      const x2 = x + Math.cos(a) * len, y2 = y + Math.sin(a) * len;
+      segs.push({ x1: x, y1: y, x2, y2, w: Math.max(0.7, 3.4 - d * 0.6), tip: d >= 5 });
+      if (d < 5) {
+        const n = d < 2 ? 2 : (Math.random() < 0.65 ? 2 : 1);
+        for (let k = 0; k < n; k++) {
+          const da = n === 1 ? rand(-0.15, 0.15) : (k === 0 ? -1 : 1) * rand(0.25, 0.55);
+          grow(x2, y2, a + da, len * rand(0.68, 0.82), d + 1);
+        }
+      }
+    })(0, 0, -Math.PI / 2 + rand(-0.2, 0.2), size * 0.3, 0);
+    const x = rand(30, W - 30);
+    return { x, segs, phase: rand(0, 6), col: pick(['#8E3B6E', '#A9442F', '#C0703A', '#7A3E8E']) };
+  }
+
+  function drawFan(f, t) {
+    const bx = f.x, by = bedY(f.x) + 4;
+    const off = (x, y) => x + Math.sin(t * 0.6 + f.phase + y * 0.02) * (-y) * 0.04;
+    ctx.strokeStyle = f.col;
+    ctx.lineCap = 'round';
+    for (const s of f.segs) {
+      ctx.lineWidth = s.w;
+      ctx.beginPath();
+      ctx.moveTo(bx + off(s.x1, s.y1), by + s.y1);
+      ctx.lineTo(bx + off(s.x2, s.y2), by + s.y2);
+      ctx.stroke();
+    }
+    ctx.fillStyle = 'rgba(255,225,215,0.55)';
+    for (const s of f.segs) if (s.tip) {
+      ctx.beginPath(); ctx.arc(bx + off(s.x2, s.y2), by + s.y2, 1.1, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  function makeRock() {
+    const x = rand(0, W), rx = rand(30, 90) * (0.6 + sizeScale * 0.4), ry = rx * rand(0.35, 0.6);
+    const pts = [];
+    for (let k = 0; k <= 12; k++) {
+      const a = Math.PI + (k / 12) * Math.PI;
+      const j = rand(0.82, 1.08);
+      pts.push([Math.cos(a) * rx * j, Math.sin(a) * ry * j]);
+    }
+    const algae = [];
+    for (let k = 0; k < 14; k++) algae.push([rand(-rx * 0.7, rx * 0.7), rand(-ry * 0.8, -2), rand(1, 3)]);
+    return { x, rx, ry, pts, algae };
+  }
+
+  function drawRock(r) {
+    const by = bedY(r.x) + 10;
+    const g = ctx.createLinearGradient(0, by - r.ry, 0, by);
+    g.addColorStop(0, '#4d6b70'); g.addColorStop(1, '#1b2f38');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    r.pts.forEach(([x, y], i) => i ? ctx.lineTo(r.x + x, by + y) : ctx.moveTo(r.x + x, by + y));
+    ctx.closePath(); ctx.fill();
+    ctx.fillStyle = 'rgba(90,130,70,0.35)';
+    for (const [ax, ay, ar] of r.algae) { ctx.beginPath(); ctx.arc(r.x + ax, by + ay, ar, 0, Math.PI * 2); ctx.fill(); }
+  }
+
+  /* =========================================================
+     Scene setup
+     ========================================================= */
+  function makeBubble(x, y, small) {
+    return { x, y, r: small ? rand(1, 2.2) : rand(1.8, 5), vy: rand(0.5, 1.3), wob: rand(0, 6), wobAmp: rand(0.2, 0.6) };
+  }
+  let vents = [];
+
+  function resize() {
+    dpr = Math.min(window.devicePixelRatio || 1, 2);
+    W = window.innerWidth;
+    H = window.innerHeight;
+    canvas.width = W * dpr;
+    canvas.height = H * dpr;
+    ctx.setTransform(dpr, 0, 0, dpr, 0, 0);
+    sizeScale = Math.max(0.55, Math.min(1, W / 1200));
+
+    const horseCount = Math.max(3, Math.min(6, Math.round(W / 240)));
+    horses = [];
+    for (let i = 0; i < horseCount; i++) horses.push(makeHorse(i));
+    horses.sort((a, b) => a.depth - b.depth);
+
+    farKelp = []; midKelp = []; grassBack = []; grassFront = []; fans = []; rocks = [];
+    for (let i = 0; i < Math.round(W / 130); i++) farKelp.push(makeKelp(true));
+    for (let i = 0; i < Math.max(2, Math.round(W / 280)); i++) midKelp.push(makeKelp(false));
+    for (let i = 0; i < Math.round(W / 70); i++) grassBack.push(makeClump(false));
+    for (let i = 0; i < Math.round(W / 170); i++) grassFront.push(makeClump(true));
+    for (let i = 0; i < Math.max(2, Math.round(W / 420)); i++) fans.push(makeFan());
+    for (let i = 0; i < Math.round(W / 300) + 2; i++) rocks.push(makeRock());
+
+    sand = [];
+    for (let i = 0; i < Math.round(W / 3); i++) {
+      const x = rand(0, W);
+      sand.push({ x, dy: rand(4, 40), r: rand(0.5, 1.4), a: rand(0.1, 0.35), light: Math.random() < 0.5 });
+    }
+
+    rays = [];
+    for (let i = 0; i < 6; i++) rays.push({ x: rand(0, W), w: rand(60, 180), skew: rand(-120, 120), phase: rand(0, 6), speed: rand(0.2, 0.5) });
+
+    specks = [];
+    for (let i = 0; i < Math.round((W * H) / 12000); i++) specks.push({ x: rand(0, W), y: rand(0, H), r: rand(0.4, 1.4), vx: rand(-0.1, 0.1), vy: rand(-0.04, 0.1), a: rand(0.12, 0.45) });
+
+    vents = [rand(W * 0.1, W * 0.9), rand(W * 0.1, W * 0.9)];
+    bubbles = [];
+    for (let i = 0; i < 18; i++) bubbles.push(makeBubble(rand(0, W), rand(0, H), false));
+  }
+
+  /* =========================================================
+     Drawing layers
+     ========================================================= */
+  function drawBackground(t) {
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, '#2b9fbd');
+    g.addColorStop(0.3, '#146f93');
+    g.addColorStop(0.65, '#0b4a6a');
+    g.addColorStop(1, '#06283d');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+
+    const s = ctx.createLinearGradient(0, 0, 0, H * 0.12);
+    s.addColorStop(0, 'rgba(210,245,255,0.35)');
+    s.addColorStop(1, 'rgba(210,245,255,0)');
+    ctx.fillStyle = s;
+    ctx.fillRect(0, 0, W, H * 0.12);
+
+    ctx.strokeStyle = 'rgba(220,250,255,0.1)';
+    ctx.lineWidth = 2;
+    for (let row = 0; row < 3; row++) {
+      ctx.beginPath();
+      const y0 = 10 + row * 14;
+      for (let x = 0; x <= W; x += 20) {
+        const y = y0 + Math.sin(x * 0.02 + t * 1.2 + row) * 4;
+        x === 0 ? ctx.moveTo(x, y) : ctx.lineTo(x, y);
+      }
+      ctx.stroke();
+    }
+  }
+
+  function drawRays(t) {
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    for (const r of rays) {
+      const a = 0.06 + 0.06 * (0.5 + 0.5 * Math.sin(t * r.speed + r.phase));
+      const g = ctx.createLinearGradient(0, 0, 0, H * 0.85);
+      g.addColorStop(0, `rgba(180,235,255,${a})`);
+      g.addColorStop(1, 'rgba(180,235,255,0)');
+      ctx.fillStyle = g;
+      const sway = Math.sin(t * 0.3 + r.phase) * 30;
+      ctx.beginPath();
+      ctx.moveTo(r.x - r.w * 0.3 + sway, 0);
+      ctx.lineTo(r.x + r.w * 0.3 + sway, 0);
+      ctx.lineTo(r.x + r.w + r.skew, H * 0.85);
+      ctx.lineTo(r.x - r.w + r.skew, H * 0.85);
+      ctx.closePath();
+      ctx.fill();
+    }
+    ctx.restore();
+  }
+
+  function drawSpecks() {
+    for (const p of specks) {
+      p.x += p.vx + current * 0.15; p.y += p.vy;
+      if (p.y > H) p.y = 0;
+      if (p.x < 0) p.x = W; else if (p.x > W) p.x = 0;
+      ctx.fillStyle = `rgba(220,245,255,${p.a})`;
+      ctx.beginPath(); ctx.arc(p.x, p.y, p.r, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  function drawFarRidge() {
+    ctx.fillStyle = '#0a3549';
+    ctx.beginPath();
+    ctx.moveTo(0, H);
+    for (let x = 0; x <= W; x += 40) ctx.lineTo(x, H - 90 - Math.sin(x * 0.004 + 1) * 30 - Math.sin(x * 0.011) * 12);
+    ctx.lineTo(W, H);
+    ctx.closePath(); ctx.fill();
+  }
+
+  function drawHaze() {
+    const g = ctx.createLinearGradient(0, 0, 0, H);
+    g.addColorStop(0, 'rgba(20,110,145,0.25)');
+    g.addColorStop(1, 'rgba(8,60,90,0.5)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  function drawSeabed(t) {
+    const g = ctx.createLinearGradient(0, H - 70, 0, H);
+    g.addColorStop(0, '#7a9e8f');
+    g.addColorStop(0.4, '#55786f');
+    g.addColorStop(1, '#2a4a52');
+    ctx.fillStyle = g;
+    ctx.beginPath();
+    ctx.moveTo(0, H);
+    for (let x = 0; x <= W; x += 20) ctx.lineTo(x, bedY(x));
+    ctx.lineTo(W, H);
+    ctx.closePath(); ctx.fill();
+
+    for (const s of sand) {
+      ctx.fillStyle = s.light ? `rgba(230,240,220,${s.a})` : `rgba(20,40,40,${s.a})`;
+      ctx.beginPath(); ctx.arc(s.x, bedY(s.x) + s.dy, s.r, 0, Math.PI * 2); ctx.fill();
+    }
+
+    // caustic light patterns on the sand
+    ctx.save();
+    ctx.globalCompositeOperation = 'lighter';
+    ctx.strokeStyle = 'rgba(200,245,255,0.06)';
+    ctx.lineWidth = 1.5;
+    for (let x = 0; x < W; x += 34) {
+      const cx = x + Math.sin(t * 0.9 + x) * 10;
+      ctx.beginPath();
+      ctx.ellipse(cx, bedY(cx) + 14 + Math.cos(t * 0.7 + x) * 4, 14, 4, Math.sin(x) * 0.3, 0, Math.PI * 2);
+      ctx.stroke();
+    }
+    ctx.restore();
+  }
+
+  function drawBubbles() {
+    if (Math.random() < 0.05) {
+      const vx = vents[Math.floor(Math.random() * vents.length)];
+      bubbles.push(makeBubble(vx + rand(-6, 6), bedY(vx), Math.random() < 0.6));
+    }
+    for (let i = bubbles.length - 1; i >= 0; i--) {
+      const b = bubbles[i];
+      b.wob += 0.05;
+      b.y -= b.vy;
+      b.x += Math.sin(b.wob) * b.wobAmp;
+      if (b.y < -10) { bubbles.splice(i, 1); continue; }
+      ctx.strokeStyle = 'rgba(230,250,255,0.5)';
+      ctx.fillStyle = 'rgba(200,240,255,0.1)';
+      ctx.lineWidth = 0.8;
+      ctx.beginPath(); ctx.arc(b.x, b.y, b.r, 0, Math.PI * 2); ctx.fill(); ctx.stroke();
+      ctx.fillStyle = 'rgba(255,255,255,0.7)';
+      ctx.beginPath(); ctx.arc(b.x - b.r * 0.35, b.y - b.r * 0.35, b.r * 0.25, 0, Math.PI * 2); ctx.fill();
+    }
+  }
+
+  function drawVignette() {
+    const g = ctx.createRadialGradient(W / 2, H * 0.45, Math.min(W, H) * 0.3, W / 2, H * 0.45, Math.max(W, H) * 0.8);
+    g.addColorStop(0, 'rgba(0,15,30,0)');
+    g.addColorStop(1, 'rgba(0,15,30,0.45)');
+    ctx.fillStyle = g;
+    ctx.fillRect(0, 0, W, H);
+  }
+
+  function frame(now, animate) {
+    const t = now / 1000;
+    current = Math.sin(t * 0.18) * 0.25 + Math.sin(t * 0.07) * 0.15;   // slow ocean surge
+
+    drawBackground(t);
+    drawRays(t);
+    for (const k of farKelp) drawKelp(k, t);
+    drawFarRidge();
+    drawHaze();
+    drawSpecks();
+    drawSeabed(t);
+    for (const r of rocks) drawRock(r);
+    for (const f of fans) drawFan(f, t);
+    for (const k of midKelp) drawKelp(k, t);
+    for (const c of grassBack) drawClump(c, t);
+    for (const h of horses) {
+      if (animate) updateHorse(h, t);
+      drawSeahorse(h, t);
+    }
+    for (const c of grassFront) drawClump(c, t);
+    drawBubbles();
+    drawVignette();
+  }
+
+  function loop(now) {
+    frame(now, true);
+    requestAnimationFrame(loop);
+  }
+
+  window.addEventListener('resize', resize);
+  resize();
+
+  if (window.matchMedia('(prefers-reduced-motion: reduce)').matches) {
+    frame(0, false);
+  } else {
+    requestAnimationFrame(loop);
+  }
+})();
+</script>
+</body>
+</html>

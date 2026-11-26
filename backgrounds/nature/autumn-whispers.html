@@ -1,0 +1,96 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>Falling Maple Leaves</title>
+<style>
+  * { box-sizing: border-box; }
+  html, body { margin: 0; min-height: 100%; }
+  body {
+    min-height: 100vh;
+    overflow: hidden;
+    position: relative;
+    font-family: Georgia, serif;
+    color: #fff8e9;
+    background:
+      radial-gradient(ellipse at 50% 15%, rgba(100, 112, 57, .35), transparent 55%),
+      linear-gradient(145deg, #182b20, #263b2b 48%, #18251e);
+  }
+  .scene {
+    position: fixed; inset: 0; overflow: hidden; pointer-events: none;
+  }
+  .leaf {
+    --size: 34px;
+    --duration: 13s;
+    --delay: 0s;
+    --drift: 100px;
+    position: absolute;
+    top: -12vh;
+    left: var(--left);
+    width: var(--size);
+    height: var(--size);
+    color: var(--leaf-color);
+    opacity: var(--opacity, .9);
+    animation: fall var(--duration) linear var(--delay) infinite;
+    filter: drop-shadow(0 3px 3px rgba(0,0,0,.22));
+  }
+  .leaf svg { width: 100%; height: 100%; overflow: visible; }
+  @keyframes fall {
+    0%   { transform: translate3d(0,-8vh,0) rotate(0deg); }
+    25%  { transform: translate3d(calc(var(--drift) * .45),25vh,0) rotate(100deg); }
+    50%  { transform: translate3d(calc(var(--drift) * -.25),55vh,0) rotate(220deg); }
+    75%  { transform: translate3d(calc(var(--drift) * .7),82vh,0) rotate(330deg); }
+    100% { transform: translate3d(var(--drift),115vh,0) rotate(500deg); }
+  }
+  .content {
+    position: relative; z-index: 1; min-height: 100vh;
+    display: grid; place-items: center; text-align: center; padding: 28px;
+  }
+  .content-inner {
+    max-width: 680px; padding: 42px 48px;
+    border: 1px solid rgba(255,255,255,.16);
+    border-radius: 22px;
+    background: rgba(12, 24, 17, .38);
+    backdrop-filter: blur(5px);
+    box-shadow: 0 18px 60px rgba(0,0,0,.18);
+  }
+  h1 { margin: 0 0 14px; font-size: clamp(2.2rem, 6vw, 4.5rem); font-weight: 500; }
+  p { margin: 0; color: #e8e5d5; font-size: 1.08rem; line-height: 1.7; }
+  @media (prefers-reduced-motion: reduce) {
+    .leaf { animation-duration: 35s; }
+  }
+</style>
+</head>
+<body>
+<div class="scene" id="leaves" aria-hidden="true"></div>
+<main class="content">
+  <section class="content-inner">
+    <h1>Autumn Whispers</h1>
+    <p>A gentle fall of maple leaves in warm orange, deep and soft reds, and fresh shades of green.</p>
+  </section>
+</main>
+<script>
+  const layer = document.getElementById('leaves');
+  const colors = ['#f28b24', '#c94735', '#8f2630', '#a8c96b', '#477d45', '#285c3b'];
+  const leafShape = `
+    <svg viewBox="0 0 64 64" fill="currentColor" xmlns="http://www.w3.org/2000/svg">
+      <path d="M31.8 3.5 37 17l11-7-1.2 13.1 13.5 1.2-9.5 10.1 7.2 9.2-13.8-.2-4.4 13.1-8-10.4-8.2 10.4-4.1-13.1-13.8.2 7.1-9.2-9.4-10.1 13.5-1.2L15.7 10l11 7 5.1-13.5Z"/>
+      <path d="M32 17 32 59 M32 43 19 31 M32 37 45 25 M32 50 43 43" fill="none" stroke="rgba(45,35,20,.42)" stroke-width="1.5" stroke-linecap="round"/>
+    </svg>`;
+  for (let i = 0; i < 34; i++) {
+    const leaf = document.createElement('div');
+    leaf.className = 'leaf';
+    leaf.innerHTML = leafShape;
+    leaf.style.setProperty('--left', `${Math.random() * 100}%`);
+    leaf.style.setProperty('--leaf-color', colors[i % colors.length]);
+    leaf.style.setProperty('--size', `${18 + Math.random() * 32}px`);
+    leaf.style.setProperty('--duration', `${9 + Math.random() * 13}s`);
+    leaf.style.setProperty('--delay', `${-Math.random() * 22}s`);
+    leaf.style.setProperty('--drift', `${-130 + Math.random() * 260}px`);
+    leaf.style.setProperty('--opacity', `${.55 + Math.random() * .4}`);
+    layer.appendChild(leaf);
+  }
+</script>
+</body>
+</html>
