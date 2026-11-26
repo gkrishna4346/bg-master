@@ -1,0 +1,21 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 64 64">
+  <defs>
+    <linearGradient id="a" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#FF8A4C"/><stop offset="1" stop-color="#FF3D7F"/>
+    </linearGradient>
+    <linearGradient id="b" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#3EE6C1"/><stop offset="1" stop-color="#3A7BFF"/>
+    </linearGradient>
+    <linearGradient id="c" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0" stop-color="#B78CFF"/><stop offset="1" stop-color="#6B4BFF"/>
+    </linearGradient>
+  </defs>
+  <rect width="64" height="64" rx="18" fill="#12131A"/>
+  <!-- three stacked "screens": the collection -->
+  <rect x="11" y="13" width="28" height="22" rx="6" fill="url(#c)" opacity=".9"/>
+  <rect x="18" y="21" width="28" height="22" rx="6" fill="url(#b)" opacity=".92"/>
+  <rect x="25" y="29" width="28" height="22" rx="6" fill="url(#a)"/>
+  <!-- a little hill + sun on the front screen -->
+  <circle cx="45" cy="36" r="3" fill="#FFF3D6"/>
+  <path d="M25 47c5-6 10-8 15-5s8 2 13-1v4a6 6 0 0 1-6 6H31a6 6 0 0 1-6-4z" fill="#12131A" opacity=".35"/>
+</svg>
