@@ -1,0 +1,102 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8">
+<meta name="viewport" content="width=device-width, initial-scale=1.0">
+<title>BG Master · Background Collections</title>
+<link rel="icon" href="assets/logo.svg" type="image/svg+xml">
+<link rel="preconnect" href="https://fonts.googleapis.com">
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
+<link rel="stylesheet" href="https://fonts.googleapis.com/css2?family=Outfit:wght@400;500;600;700&display=swap">
+<link rel="stylesheet" href="assets/style.css">
+<script>
+  // pick the saved theme before the page paints (dark by default)
+  try { if (localStorage.getItem('bgm-theme') === 'light') document.documentElement.dataset.theme = 'light'; } catch (e) {}
+</script>
+</head>
+<body>
+
+<!-- The selected background runs here, full screen -->
+<div class="stage" id="stage">
+  <iframe id="frame" title="Background preview"></iframe>
+  <div class="loader" id="loader" aria-hidden="true"><span></span></div>
+</div>
+
+<!-- Homepage: plain background with a faded honeycomb (shown until a background is picked) -->
+<section class="home" id="home" aria-label="Welcome">
+  <canvas id="honeycomb" aria-hidden="true"></canvas>
+  <button class="theme-toggle" id="themeBtn" type="button" title="Switch light / dark" aria-label="Switch to light theme">
+    <svg class="sun" viewBox="0 0 24 24"><circle cx="12" cy="12" r="4.2"/><path d="M12 2.5v2.2M12 19.3v2.2M2.5 12h2.2M19.3 12h2.2M5.3 5.3l1.6 1.6M17.1 17.1l1.6 1.6M5.3 18.7l1.6-1.6M17.1 6.9l1.6-1.6"/></svg>
+    <svg class="moon" viewBox="0 0 24 24"><path d="M20.5 13.2A8.5 8.5 0 1 1 10.8 3.5a6.6 6.6 0 0 0 9.7 9.7z"/></svg>
+  </button>
+  <div class="hero">
+    <img src="assets/logo.svg" alt="" width="84" height="84">
+    <h2>Find your next <span>background</span></h2>
+    <p>Animated HTML backgrounds, ready to preview and download.<br>Pick one from the list to see it live.</p>
+    <div class="stats" id="stats"></div>
+    <button class="cta" id="heroShuffle" type="button">
+      <svg viewBox="0 0 24 24"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>Surprise me
+    </button>
+    <p class="keys"><kbd>/</kbd> search &nbsp;·&nbsp; <kbd>↑</kbd><kbd>↓</kbd> browse &nbsp;·&nbsp; <kbd>F</kbd> full view &nbsp;·&nbsp; <kbd>R</kbd> random</p>
+  </div>
+</section>
+
+<!-- Left column behind the sidebar (shows once the screen splits) -->
+<div class="rail" id="rail" aria-hidden="true"></div>
+
+<!-- Sidebar -->
+<aside class="sidebar" id="sidebar" aria-label="Background collections">
+  <header class="brand">
+    <a href="./" id="homeLink" title="Home" aria-label="BG Master home"><img src="assets/logo.svg" alt="" width="44" height="44"></a>
+    <div>
+      <h1>BG <span>Master</span></h1>
+      <p><b id="count">0</b> background collections</p>
+    </div>
+    <button class="icon-btn" id="hideBtn" type="button" title="Hide sidebar (F)" aria-label="Hide sidebar">
+      <svg viewBox="0 0 24 24"><path d="M15 6l-6 6 6 6"/></svg>
+    </button>
+  </header>
+
+  <label class="search">
+    <svg viewBox="0 0 24 24" aria-hidden="true"><circle cx="11" cy="11" r="7"/><path d="M20 20l-3.5-3.5"/></svg>
+    <input id="search" type="search" placeholder="Search backgrounds" aria-label="Search backgrounds" autocomplete="off">
+    <kbd>/</kbd>
+  </label>
+
+  <div class="chips" id="chips" role="group" aria-label="Filter by category"></div>
+
+  <nav class="list" id="list"></nav>
+
+  <footer class="foot">
+    <button class="foot-btn" id="shuffleBtn" type="button" title="Random background (R)">
+      <svg viewBox="0 0 24 24"><path d="M16 3h5v5M4 20 21 3M21 16v5h-5M15 15l6 6M4 4l5 5"/></svg>Surprise me
+    </button>
+    <span class="hint"><kbd>↑</kbd><kbd>↓</kbd> browse</span>
+  </footer>
+</aside>
+
+<!-- Floating bar for the current background -->
+<div class="nowbar" id="nowbar">
+  <button class="icon-btn show-side" id="showBtn" type="button" title="Show sidebar (F)" aria-label="Show sidebar">
+    <svg viewBox="0 0 24 24"><path d="M4 6h16M4 12h16M4 18h16"/></svg>
+  </button>
+  <span class="now-thumb" id="nowThumb"></span>
+  <span class="now-text"><b id="nowName">–</b><small id="nowCat">–</small></span>
+  <button class="icon-btn" id="nowDownload" type="button" title="Download this background" aria-label="Download this background">
+    <svg viewBox="0 0 24 24"><path d="M12 4v11M7 10l5 5 5-5M5 20h14"/></svg>
+  </button>
+  <a class="icon-btn" id="nowOpen" href="#" target="_blank" rel="noopener" title="Open in a new tab" aria-label="Open in a new tab">
+    <svg viewBox="0 0 24 24"><path d="M14 4h6v6M20 4l-9 9M18 14v5a1 1 0 0 1-1 1H5a1 1 0 0 1-1-1V7a1 1 0 0 1 1-1h5"/></svg>
+  </a>
+  <button class="icon-btn" id="reloadBtn" type="button" title="Back to home" aria-label="Back to home">
+    <svg viewBox="0 0 24 24"><path d="M20 11a8 8 0 1 0-2.3 5.7M20 4v7h-7"/></svg>
+  </button>
+</div>
+
+<div class="toast" id="toast" role="status" aria-live="polite"></div>
+
+<script src="assets/backgrounds.js"></script>
+<script src="assets/app.js"></script>
+<script src="assets/honeycomb.js"></script>
+</body>
+</html>
